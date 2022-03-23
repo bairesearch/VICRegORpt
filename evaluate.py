@@ -22,6 +22,7 @@ import torch
 
 import resnet
 
+distributedExecution = False
 
 def get_arguments():
     parser = argparse.ArgumentParser(
@@ -91,9 +92,13 @@ def get_arguments():
     )
 
     # Running
+    if(distributedExecution):
+        defaultNumWorkers = 8  
+    else:
+        defaultNumWorkers = 0
     parser.add_argument(
         "--workers",
-        default=8,
+        default=defaultNumWorkers,
         type=int,
         metavar="N",
         help="number of data loader workers",
@@ -109,25 +114,33 @@ def main():
         args.train_files = urllib.request.urlopen(
             f"https://raw.githubusercontent.com/google-research/simclr/master/imagenet_subsets/{args.train_percent}percent.txt"
         ).readlines()
-    args.ngpus_per_node = torch.cuda.device_count()
-    if "SLURM_JOB_ID" in os.environ:
-        signal.signal(signal.SIGUSR1, handle_sigusr1)
-        signal.signal(signal.SIGTERM, handle_sigterm)
-    # single-node distributed training
-    args.rank = 0
-    args.dist_url = f"tcp://localhost:{random.randrange(49152, 65535)}"
-    args.world_size = args.ngpus_per_node
-    torch.multiprocessing.spawn(main_worker, (args,), args.ngpus_per_node)
-
+        
+    if(distributedExecution):
+        args.ngpus_per_node = torch.cuda.device_count()
+        if "SLURM_JOB_ID" in os.environ:
+            signal.signal(signal.SIGUSR1, handle_sigusr1)
+            signal.signal(signal.SIGTERM, handle_sigterm)
+        # single-node distributed training
+        args.rank = 0
+        args.dist_url = f"tcp://localhost:{random.randrange(49152, 65535)}"
+        args.world_size = args.ngpus_per_node
+        torch.multiprocessing.spawn(main_worker, (args,), args.ngpus_per_node)
+    else:
+        args.rank = 0
+        print(args)
+        gpu = 0    #args.device
+        main_worker(gpu, args)
 
 def main_worker(gpu, args):
-    args.rank += gpu
-    torch.distributed.init_process_group(
-        backend="nccl",
-        init_method=args.dist_url,
-        world_size=args.world_size,
-        rank=args.rank,
-    )
+    
+    if(distributedExecution):
+        args.rank += gpu
+        torch.distributed.init_process_group(
+            backend="nccl",
+            init_method=args.dist_url,
+            world_size=args.world_size,
+            rank=args.rank,
+        )
 
     if args.rank == 0:
         args.exp_dir.mkdir(parents=True, exist_ok=True)
@@ -139,7 +152,7 @@ def main_worker(gpu, args):
     torch.backends.cudnn.benchmark = True
 
     backbone, embedding = resnet.__dict__[args.arch](zero_init_residual=True)
-    state_dict = torch.load(args.pretrained, map_location="cpu")
+    state_dict = torch.load(args.pretrained, map_location="cpu")    #state_dict = torch.load(args.pretrained)
     missing_keys, unexpected_keys = backbone.load_state_dict(state_dict, strict=False)
     assert missing_keys == [] and unexpected_keys == []
 
@@ -152,7 +165,8 @@ def main_worker(gpu, args):
     if args.weights == "freeze":
         backbone.requires_grad_(False)
         head.requires_grad_(True)
-    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[gpu])
+    if(distributedExecution):
+        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[gpu])
 
     criterion = nn.CrossEntropyLoss().cuda(gpu)
 
@@ -213,15 +227,29 @@ def main_worker(gpu, args):
                 (traindir / cls / fname, train_dataset.class_to_idx[cls])
             )
 
-    train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
+    if(distributedExecution):
+        train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, shuffle=True)
+        batch_size = args.batch_size // args.world_size
+    else:
+    	#train_sampler = torch.utils.data.RandomSampler(train_dataset) #sample from a shuffled dataset
+        batch_size = args.batch_size
     kwargs = dict(
-        batch_size=args.batch_size // args.world_size,
+        batch_size=batch_size,
         num_workers=args.workers,
         pin_memory=True,
     )
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset, sampler=train_sampler, **kwargs
-    )
+    if(distributedExecution):
+        train_loader = torch.utils.data.DataLoader(
+            train_dataset, 
+            sampler=train_sampler, 
+            **kwargs
+        )    
+    else:
+        train_loader = torch.utils.data.DataLoader(
+            train_dataset,
+            shuffle=True,
+            **kwargs
+        )
     val_loader = torch.utils.data.DataLoader(val_dataset, **kwargs)
 
     start_time = time.time()
@@ -233,7 +261,8 @@ def main_worker(gpu, args):
             model.eval()
         else:
             assert False
-        train_sampler.set_epoch(epoch)
+        if(distributedExecution):
+            train_sampler.set_epoch(epoch)
         for step, (images, target) in enumerate(
             train_loader, start=epoch * len(train_loader)
         ):
@@ -243,7 +272,8 @@ def main_worker(gpu, args):
             loss.backward()
             optimizer.step()
             if step % args.print_freq == 0:
-                torch.distributed.reduce(loss.div_(args.world_size), 0)
+                if(distributedExecution):
+                    torch.distributed.reduce(loss.div_(args.world_size), 0)
                 if args.rank == 0:
                     pg = optimizer.param_groups
                     lr_head = pg[0]["lr"]
