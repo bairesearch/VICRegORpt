@@ -23,6 +23,7 @@ import torch
 import resnet
 
 distributedExecution = False
+saveModelEveryEpoch = True
 
 def get_arguments():
     parser = argparse.ArgumentParser(
@@ -152,7 +153,7 @@ def main_worker(gpu, args):
     torch.backends.cudnn.benchmark = True
 
     backbone, embedding = resnet.__dict__[args.arch](zero_init_residual=True)
-    state_dict = torch.load(args.pretrained, map_location="cpu")    #state_dict = torch.load(args.pretrained)
+    state_dict = torch.load(args.pretrained, map_location="cpu")
     missing_keys, unexpected_keys = backbone.load_state_dict(state_dict, strict=False)
     assert missing_keys == [] and unexpected_keys == []
 
@@ -324,6 +325,19 @@ def main_worker(gpu, args):
                 scheduler=scheduler.state_dict(),
             )
             torch.save(state, args.exp_dir / "checkpoint.pth")
+        
+        if(saveModelEveryEpoch):
+            if(distributedExecution):
+                if args.rank == 0:
+                    torch.save(backbone.state_dict(), args.exp_dir / "resnet50eval.pth")
+            else:
+                torch.save(backbone.state_dict(), args.exp_dir / "resnet50eval.pth")
+    if(not saveModelEveryEpoch):
+        if(distributedExecution):
+            if args.rank == 0:
+                torch.save(backbone.state_dict(), args.exp_dir / "resnet50eval.pth")
+        else:
+            torch.save(backbone.state_dict(), args.exp_dir / "resnet50eval.pth")
 
 
 def handle_sigusr1(signum, frame):
