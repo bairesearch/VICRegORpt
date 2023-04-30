@@ -96,13 +96,13 @@ python evaluate.py --data-dir /path/to/imagenet/ --pretrained /path/to/checkpoin
 To evaluate a pretrained ResNet50-model on semi-supervised fine-tunning on 1% of ImageNet labels, run:
 
 ```
-python evaluate.py --data-dir /path/to/imagenet/ --pretrained /path/to/checkpoint/resnet50.pth --exp-dir /path/to/experiment/ --weights finetune --train-perc 1 --epochs 20 --lr-backbone 0.03 --lr-classifier 0.08 --weight-decay 0
+python evaluate.py --data-dir /path/to/imagenet/ --pretrained /path/to/checkpoint/resnet50.pth --exp-dir /path/to/experiment/ --weights finetune --train-perc 1 --epochs 20 --lr-backbone 0.03 --lr-head 0.08 --weight-decay 0
 ```
 
 To evaluate a pretrained ResNet50-model on semi-supervised fine-tunning on 10% of ImageNet labels, run:
 
 ```
-python evaluate.py --data-dir /path/to/imagenet/ --pretrained /path/to/checkpoint/resnet50.pth --exp-dir /path/to/checkpoint/resnet.pth --weights finetune --train-perc 10 --epochs 20 --lr-backbone 0.01 --lr-classifier 0.1 --weight-decay 0
+python evaluate.py --data-dir /path/to/imagenet/ --pretrained /path/to/checkpoint/resnet50.pth --exp-dir /path/to/checkpoint/resnet.pth --weights finetune --train-perc 10 --epochs 20 --lr-backbone 0.01 --lr-head 0.1 --weight-decay 0
 ```
 
 ## Acknowledgement

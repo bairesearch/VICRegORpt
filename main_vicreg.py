@@ -13,16 +13,26 @@ import os
 import sys
 import time
 
+distributedExecution = False
+learningRateWarmup = True
+saveModelEveryEpoch = True
+
 import torch
 import torch.nn.functional as F
 from torch import nn, optim
-import torch.distributed as dist
+if(distributedExecution):
+    import torch.distributed as dist
 import torchvision.datasets as datasets
 
 import augmentations as aug
-from distributed import init_distributed_mode
+if(distributedExecution):
+    from distributed import init_distributed_mode
+
+#if(not distributedExecution):
+#    from torch.utils.data.sampler import []_sampler
 
 import resnet
+
 
 
 def get_arguments():
@@ -49,8 +59,13 @@ def get_arguments():
                         help='Number of epochs')
     parser.add_argument("--batch-size", type=int, default=2048,
                         help='Effective batch size (per worker batch size is [batch-size] / world-size)')
-    parser.add_argument("--base-lr", type=float, default=0.2,
-                        help='Base learning rate, effective learning after warmup is [base-lr] * [batch-size] / 256')
+    if(learningRateWarmup):
+        parser.add_argument("--base-lr", type=float, default=0.2,
+                            help='Base learning rate, effective learning after warmup is [base-lr] * [batch-size] / 256')
+    else:
+        parser.add_argument("--base-lr", type=float, default=0.2,
+                            help='Learning rate') 
+
     parser.add_argument("--wd", type=float, default=1e-6,
                         help='Weight decay')
 
@@ -63,23 +78,33 @@ def get_arguments():
                         help='Covariance regularization loss coefficient')
 
     # Running
-    parser.add_argument("--num-workers", type=int, default=10)
+    if(distributedExecution):
+        defaultNumWorkers = 10
+    else:
+        defaultNumWorkers = 0
+    parser.add_argument("--num-workers", type=int, default=defaultNumWorkers)
     parser.add_argument('--device', default='cuda',
                         help='device to use for training / testing')
 
-    # Distributed
-    parser.add_argument('--world-size', default=1, type=int,
-                        help='number of distributed processes')
-    parser.add_argument('--local_rank', default=-1, type=int)
-    parser.add_argument('--dist-url', default='env://',
-                        help='url used to set up distributed training')
+    #Distributed
+    if(distributedExecution):
+        parser.add_argument('--world-size', default=1, type=int,
+                            help='number of distributed processes')
+        parser.add_argument('--local_rank', default=-1, type=int)
+        parser.add_argument('--dist-url', default='env://',
+                            help='url used to set up distributed training')                      
+    else:
+        parser.add_argument('--rank', default=0, type=int)
+
+
 
     return parser
 
 
 def main(args):
     torch.backends.cudnn.benchmark = True
-    init_distributed_mode(args)
+    if(distributedExecution):
+        init_distributed_mode(args)
     print(args)
     gpu = torch.device(args.device)
 
@@ -92,20 +117,32 @@ def main(args):
     transforms = aug.TrainTransform()
 
     dataset = datasets.ImageFolder(args.data_dir / "train", transforms)
-    sampler = torch.utils.data.distributed.DistributedSampler(dataset, shuffle=True)
-    assert args.batch_size % args.world_size == 0
-    per_device_batch_size = args.batch_size // args.world_size
-    loader = torch.utils.data.DataLoader(
-        dataset,
-        batch_size=per_device_batch_size,
-        num_workers=args.num_workers,
-        pin_memory=True,
-        sampler=sampler,
-    )
+    if(distributedExecution):
+        sampler = torch.utils.data.distributed.DistributedSampler(dataset, shuffle=True)
+        assert args.batch_size % args.world_size == 0
+        per_device_batch_size = args.batch_size // args.world_size
+        loader = torch.utils.data.DataLoader(
+            dataset,
+            batch_size=per_device_batch_size,
+            num_workers=args.num_workers,
+            pin_memory=True,
+            sampler=sampler,
+        )
+    else:
+    	#sampler = torch.utils.data.RandomSampler(dataset) #sample from a shuffled dataset
+        per_device_batch_size = args.batch_size 
+        loader = torch.utils.data.DataLoader(
+            dataset,
+            batch_size=per_device_batch_size,
+            num_workers=args.num_workers,
+            pin_memory=True,
+            shuffle=True,
+        )
 
     model = VICReg(args).cuda(gpu)
-    model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
-    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[gpu])
+    if(distributedExecution):
+        model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
+        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[gpu])
     optimizer = LARS(
         model.parameters(),
         lr=0,
@@ -127,12 +164,16 @@ def main(args):
     start_time = last_logging = time.time()
     scaler = torch.cuda.amp.GradScaler()
     for epoch in range(start_epoch, args.epochs):
-        sampler.set_epoch(epoch)
+        if(distributedExecution):
+            sampler.set_epoch(epoch)
         for step, ((x, y), _) in enumerate(loader, start=epoch * len(loader)):
             x = x.cuda(gpu, non_blocking=True)
             y = y.cuda(gpu, non_blocking=True)
-
-            lr = adjust_learning_rate(args, optimizer, loader, step)
+    
+            if(learningRateWarmup):
+                lr = adjust_learning_rate(args, optimizer, loader, step)
+            else:
+                lr = args.base_lr
 
             optimizer.zero_grad()
             with torch.cuda.amp.autocast():
@@ -160,8 +201,18 @@ def main(args):
                 optimizer=optimizer.state_dict(),
             )
             torch.save(state, args.exp_dir / "model.pth")
-    if args.rank == 0:
-        torch.save(model.module.backbone.state_dict(), args.exp_dir / "resnet50.pth")
+        if(saveModelEveryEpoch):
+            if(distributedExecution):
+                if args.rank == 0:
+                    torch.save(model.module.backbone.state_dict(), args.exp_dir / "resnet50.pth")
+            else:
+                torch.save(model.backbone.state_dict(), args.exp_dir / "resnet50.pth")
+    if(not saveModelEveryEpoch):
+        if(distributedExecution):
+            if args.rank == 0:
+                torch.save(model.module.backbone.state_dict(), args.exp_dir / "resnet50.pth")
+        else:
+            torch.save(model.backbone.state_dict(), args.exp_dir / "resnet50.pth")
 
 
 def adjust_learning_rate(args, optimizer, loader, step):
@@ -197,8 +248,9 @@ class VICReg(nn.Module):
 
         repr_loss = F.mse_loss(x, y)
 
-        x = torch.cat(FullGatherLayer.apply(x), dim=0)
-        y = torch.cat(FullGatherLayer.apply(y), dim=0)
+        if(distributedExecution):
+            x = torch.cat(FullGatherLayer.apply(x), dim=0)
+            y = torch.cat(FullGatherLayer.apply(y), dim=0)
         x = x - x.mean(dim=0)
         y = y - y.mean(dim=0)
 
