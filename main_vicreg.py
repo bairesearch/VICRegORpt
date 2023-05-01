@@ -13,6 +13,10 @@ import os
 import sys
 import time
 
+from vicregBiological_globalDefs import *
+if(vicregBiologicalMods):
+	import vicregBiological_operations
+	import vicregBiological_resnetGreedy
 distributedExecution = False
 learningRateWarmup = True
 saveModelEveryEpoch = True
@@ -32,8 +36,6 @@ if(distributedExecution):
 #	from torch.utils.data.sampler import []_sampler
 
 import resnet
-
-
 
 def get_arguments():
 	parser = argparse.ArgumentParser(description="Pretrain a resnet model with VICReg", add_help=False)
@@ -113,8 +115,8 @@ def main(args):
 		stats_file = open(args.exp_dir / "stats.txt", "a", buffering=1)
 		print(" ".join(sys.argv))
 		print(" ".join(sys.argv), file=stats_file)
-
-	transforms = aug.TrainTransform()
+	
+	transforms = aug.TrainTransform(imageWidth)
 
 	dataset = datasets.ImageFolder(args.data_dir / "train", transforms)
 	if(distributedExecution):
@@ -150,7 +152,15 @@ def main(args):
 		weight_decay_filter=exclude_bias_and_norm,
 		lars_adaptation_filter=exclude_bias_and_norm,
 	)
-
+	
+	if(vicregBiologicalMods):
+		vicregBiological_operations.weightsSetPositiveModel(model.backbone)
+		if(trainGreedy):
+			if(trainGreedyIndependentBatchNorm):
+				args.trainOrTest = True
+			resnet.setArgs(args)	#required for local loss function
+			optim = vicregBiological_resnetGreedy.createLocalOptimisers(model)
+			
 	if (args.exp_dir / "model.pth").is_file():
 		if args.rank == 0:
 			print("resuming from checkpoint")
@@ -170,24 +180,30 @@ def main(args):
 			x = x.cuda(gpu, non_blocking=True)
 			y = y.cuda(gpu, non_blocking=True)
 	
-			if(learningRateWarmup):
-				lr = adjust_learning_rate(args, optimizer, loader, step)
+			if(trainGreedy):
+				xAll = torch.cat((x, y), dim=0)
+				loss = model.forward(xAll, True, optim)
+				lr = learningRateLocal
 			else:
-				lr = args.base_lr
+				if(learningRateWarmup):
+					lr = adjust_learning_rate(args, optimizer, loader, step)
+				else:
+					lr = args.base_lr
 
-			optimizer.zero_grad()
-			with torch.cuda.amp.autocast():
-				loss = model.forward(x, y)
-			scaler.scale(loss).backward()
-			scaler.step(optimizer)
-			scaler.update()
+				optimizer.zero_grad()
+				with torch.cuda.amp.autocast():
+					loss = model.forward(x, y)
+				scaler.scale(loss).backward()
+				scaler.step(optimizer)
+				scaler.update()
+			loss=loss.item()
 
 			current_time = time.time()
 			if args.rank == 0 and current_time - last_logging > args.log_freq_time:
 				stats = dict(
 					epoch=epoch,
 					step=step,
-					loss=loss.item(),
+					loss=loss,
 					time=int(current_time - start_time),
 					lr=lr,
 				)
@@ -241,35 +257,44 @@ class VICReg(nn.Module):
 			zero_init_residual=True
 		)
 		self.projector = Projector(args, self.embedding)
+			
+	if(trainGreedy):
+		def forward(self, x, trainOrTest, optim):
+			x, lossAvg = self.backbone(x, trainOrTest, optim)
+			return lossAvg
+	else:
+		def forward(self, x, y):
+			x = self.backbone(x)
+			y = self.backbone(y)
+			#print("x = ", x)
+			#print("y = ", y)
+			x = self.projector(x)
+			y = self.projector(y)
 
-	def forward(self, x, y):
-		x = self.projector(self.backbone(x))
-		y = self.projector(self.backbone(y))
+			repr_loss = F.mse_loss(x, y)
 
-		repr_loss = F.mse_loss(x, y)
+			if(distributedExecution):
+				x = torch.cat(FullGatherLayer.apply(x), dim=0)
+				y = torch.cat(FullGatherLayer.apply(y), dim=0)
+			x = x - x.mean(dim=0)
+			y = y - y.mean(dim=0)
 
-		if(distributedExecution):
-			x = torch.cat(FullGatherLayer.apply(x), dim=0)
-			y = torch.cat(FullGatherLayer.apply(y), dim=0)
-		x = x - x.mean(dim=0)
-		y = y - y.mean(dim=0)
+			std_x = torch.sqrt(x.var(dim=0) + 0.0001)
+			std_y = torch.sqrt(y.var(dim=0) + 0.0001)
+			std_loss = torch.mean(F.relu(1 - std_x)) / 2 + torch.mean(F.relu(1 - std_y)) / 2
 
-		std_x = torch.sqrt(x.var(dim=0) + 0.0001)
-		std_y = torch.sqrt(y.var(dim=0) + 0.0001)
-		std_loss = torch.mean(F.relu(1 - std_x)) / 2 + torch.mean(F.relu(1 - std_y)) / 2
+			cov_x = (x.T @ x) / (self.args.batch_size - 1)
+			cov_y = (y.T @ y) / (self.args.batch_size - 1)
+			cov_loss = off_diagonal(cov_x).pow_(2).sum().div(
+				self.num_features
+			) + off_diagonal(cov_y).pow_(2).sum().div(self.num_features)
 
-		cov_x = (x.T @ x) / (self.args.batch_size - 1)
-		cov_y = (y.T @ y) / (self.args.batch_size - 1)
-		cov_loss = off_diagonal(cov_x).pow_(2).sum().div(
-			self.num_features
-		) + off_diagonal(cov_y).pow_(2).sum().div(self.num_features)
-
-		loss = (
-			self.args.sim_coeff * repr_loss
-			+ self.args.std_coeff * std_loss
-			+ self.args.cov_coeff * cov_loss
-		)
-		return loss
+			loss = (
+				self.args.sim_coeff * repr_loss
+				+ self.args.std_coeff * std_loss
+				+ self.args.cov_coeff * cov_loss
+			)
+			return loss
 
 
 def Projector(args, embedding):

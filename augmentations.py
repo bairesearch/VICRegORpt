@@ -10,6 +10,8 @@ import numpy as np
 import torchvision.transforms as transforms
 from torchvision.transforms import InterpolationMode
 
+from vicregBiological_globalDefs import *
+
 
 class GaussianBlur(object):
 	def __init__(self, p):
@@ -33,13 +35,25 @@ class Solarization(object):
 		else:
 			return img
 
+class Normalize(object):
+	def __init__(self, mean, std):
+		self.mean = mean
+		self.std = std
+		self.normalize = transforms.Normalize(mean=self.mean, std=self.std)
+
+	def __call__(self, img):
+		if(usePositiveWeights):
+			return img
+		else:
+			return self.normalize(img)
+
 
 class TrainTransform(object):
-	def __init__(self):
+	def __init__(self, imageWidth):
 		self.transform = transforms.Compose(
 			[
 				transforms.RandomResizedCrop(
-					224, interpolation=InterpolationMode.BICUBIC
+					imageWidth, interpolation=InterpolationMode.BICUBIC
 				),
 				transforms.RandomHorizontalFlip(p=0.5),
 				transforms.RandomApply(
@@ -54,15 +68,13 @@ class TrainTransform(object):
 				GaussianBlur(p=1.0),
 				Solarization(p=0.0),
 				transforms.ToTensor(),
-				transforms.Normalize(
-					mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-				),
+				Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 			]
 		)
 		self.transform_prime = transforms.Compose(
 			[
 				transforms.RandomResizedCrop(
-					224, interpolation=InterpolationMode.BICUBIC
+					imageWidth, interpolation=InterpolationMode.BICUBIC
 				),
 				transforms.RandomHorizontalFlip(p=0.5),
 				transforms.RandomApply(
@@ -77,9 +89,7 @@ class TrainTransform(object):
 				GaussianBlur(p=0.1),
 				Solarization(p=0.2),
 				transforms.ToTensor(),
-				transforms.Normalize(
-					mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-				),
+				Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 			]
 		)
 

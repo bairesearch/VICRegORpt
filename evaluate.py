@@ -22,6 +22,7 @@ import torch
 
 import resnet
 
+from vicregBiological_globalDefs import *
 distributedExecution = False
 saveModelEveryEpoch = True
 
@@ -161,11 +162,19 @@ def main_worker(gpu, args):
 			for (key, value) in state_dict.items()
 		}
 	backbone.load_state_dict(state_dict, strict=False)
-
+	
+	if(trainGreedy):
+		if(trainGreedyIndependentBatchNorm):
+			args.trainOrTest = False
+		resnet.setArgs(args)	#required for local loss function
+		
 	head = nn.Linear(embedding, 1000)
 	head.weight.data.normal_(mean=0.0, std=0.01)
 	head.bias.data.zero_()
-	model = nn.Sequential(backbone, head)
+	if(trainGreedy):
+		model = sequentialMultiInput(backbone, head)
+	else:
+		model = nn.Sequential(backbone, head)
 	model.cuda(gpu)
 
 	if args.weights == "freeze":
@@ -272,7 +281,10 @@ def main_worker(gpu, args):
 		for step, (images, target) in enumerate(
 			train_loader, start=epoch * len(train_loader)
 		):
-			output = model(images.cuda(gpu, non_blocking=True))
+			if(trainGreedy):
+				output = model(images.cuda(gpu, non_blocking=True), False, None)
+			else:
+				output = model(images.cuda(gpu, non_blocking=True))
 			loss = criterion(output, target.cuda(gpu, non_blocking=True))
 			optimizer.zero_grad()
 			loss.backward()
@@ -398,3 +410,6 @@ def accuracy(output, target, topk=(1,)):
 
 if __name__ == "__main__":
 	main()
+
+
+
