@@ -6,13 +6,13 @@
 
 
 import torch
-import resnet
+import VICRegORpt_resnet
 
 dependencies = ["torch", "torchvision"]
 
 
 def resnet50(pretrained=True, **kwargs):
-	model, _ = resnet.resnet50(**kwargs)
+	model, _ = VICRegORpt_resnet.resnet50(**kwargs)
 	if pretrained:
 		state_dict = torch.hub.load_state_dict_from_url(
 			url="https://dl.fbaipublicfiles.com/vicreg/resnet50.pth",
@@ -23,7 +23,7 @@ def resnet50(pretrained=True, **kwargs):
 
 
 def resnet50x2(pretrained=True, **kwargs):
-	model, _ = resnet.resnet50x2(**kwargs)
+	model, _ = VICRegORpt_resnet.resnet50x2(**kwargs)
 	if pretrained:
 		state_dict = torch.hub.load_state_dict_from_url(
 			url="https://dl.fbaipublicfiles.com/vicreg/resnet50x2.pth",
@@ -34,7 +34,7 @@ def resnet50x2(pretrained=True, **kwargs):
 
 
 def resnet200x2(pretrained=True, **kwargs):
-	model, _ = resnet.resnet200x2(**kwargs)
+	model, _ = VICRegORpt_resnet.resnet200x2(**kwargs)
 	if pretrained:
 		state_dict = torch.hub.load_state_dict_from_url(
 			url="https://dl.fbaipublicfiles.com/vicreg/resnet200x2.pth",

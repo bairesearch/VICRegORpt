@@ -1,4 +1,4 @@
-"""vicregBiological_operations.py
+"""VICRegORpt_operations.py
 
 # Author:
 Richard Bruce Baxter - Copyright (c) 2022-2023 Baxter AI (baxterai.com)
@@ -7,17 +7,17 @@ Richard Bruce Baxter - Copyright (c) 2022-2023 Baxter AI (baxterai.com)
 MIT License
 
 # Installation:
-see vicregBiological_globalDefs.py
+see VICRegORpt_globalDefs.py
 
 # Usage:
-see vicregBiological_globalDefs.py
+see VICRegORpt_globalDefs.py
 
 # Description:
 vicreg biological operations
 
 """
 
-from vicregBiological_globalDefs import *
+from VICRegORpt_globalDefs import *
 
 def weightsSetPositiveModel(self):
 	if(usePositiveWeights):

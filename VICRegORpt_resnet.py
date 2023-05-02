@@ -8,10 +8,10 @@
 import torch
 import torch.nn as nn
 
-from vicregBiological_globalDefs import *
-if(trainGreedy):
-	import vicregBiological_resnetGreedy
-	from vicregBiological_resnetGreedy import sequentialMultiInput
+from VICRegORpt_globalDefs import *
+if(trainLocal):
+	import VICRegORpt_resnet_vicregLocal
+	from VICRegORpt_resnet_vicregLocal import sequentialMultiInput
 
 def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1):
 	"""3x3 convolution with padding"""
@@ -30,17 +30,17 @@ def conv1x1(in_planes, out_planes, stride=1):
 	"""1x1 convolution"""
 	return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
 
-if(trainGreedy):
+if(trainLocal):
 	def setArgs(argsNew):
-		vicregBiological_resnetGreedy.setArgs(argsNew)
+		VICRegORpt_resnet_vicregLocal.setArgs(argsNew)
 
 def createNormLayer(norm_layer):
 	if norm_layer is None:
 		if(normaliseActivationSparsity):
 			norm_layer = nn.InstanceNorm2d	#nn.GroupNorm(1, num_out_filters)
 		else:
-			if(trainGreedyIndependentBatchNorm):
-				norm_layer = vicregBiological_resnetGreedy.BatchNormLayerVICregLocal
+			if(trainLocalIndependentBatchNorm):
+				norm_layer = VICRegORpt_resnet_vicregLocal.BatchNormLayerVICregLocal
 			else:
 				norm_layer = nn.BatchNorm2d
 	return norm_layer
@@ -66,9 +66,9 @@ class Input(nn.Module):
 		self.l1 = l1
 		self.l2 = l2
 
-	if(trainGreedy):
+	if(trainLocal):
 		def forward(self, x, lossSum, lossIndex, trainOrTest, optim):
-			return vicregBiological_resnetGreedy.InputForwardVicregGreedy(self, x, lossSum, lossIndex, trainOrTest, optim)
+			return VICRegORpt_resnet_vicregLocal.InputForwardVicregLocal(self, x, lossSum, lossIndex, trainOrTest, optim)
 	else:
 		def forward(self, x):
 			x = self.conv1(x)
@@ -113,9 +113,9 @@ class BasicBlock(nn.Module):
 		self.l1 = l1
 		self.l2 = l2
 
-	if(trainGreedy):
+	if(trainLocal):
 		def forward(self, x, lossSum, lossIndex, trainOrTest, optim):
-			return vicregBiological_resnetGreedy.BasicBlockForwardVicregGreedy(self, x, lossSum, lossIndex, trainOrTest, optim)
+			return VICRegORpt_resnet_vicregLocal.BasicBlockForwardVicregLocal(self, x, lossSum, lossIndex, trainOrTest, optim)
 	else:
 		def forward(self, x):
 			identity = x
@@ -178,9 +178,9 @@ class Bottleneck(nn.Module):
 		elif last_activation == "sigmoid":
 			self.last_activation = nn.Sigmoid()
 
-	if(trainGreedy):
+	if(trainLocal):
 		def forward(self, x, lossSum, lossIndex, trainOrTest, optim):
-			return vicregBiological_resnetGreedy.BottleneckForwardVicregGreedy(self, x, lossSum, lossIndex, trainOrTest, optim)
+			return VICRegORpt_resnet_vicregLocal.BottleneckForwardVicregLocal(self, x, lossSum, lossIndex, trainOrTest, optim)
 	else:
 		def forward(self, x):
 			identity = x
@@ -224,7 +224,7 @@ class ResNet(nn.Module):
 		self._norm_layer = norm_layer
 		# self._last_activation = last_activation
 
-		if(trainGreedy):
+		if(trainLocal):
 			self.block = block
 			self.layers = layers
 		
@@ -285,7 +285,7 @@ class ResNet(nn.Module):
 				nn.init.constant_(m.weight, 1)
 				nn.init.constant_(m.bias, 0)
 
-		if(not normaliseActivationSparsity and not trainGreedyIndependentBatchNorm):
+		if(not normaliseActivationSparsity and not trainLocalIndependentBatchNorm):
 			# Zero-initialize the last BN in each residual branch,
 			# so that the residual branch starts with zeros, and each residual block behaves like an identity.
 			# This improves the model by 0.2~0.3% according to https://arxiv.org/abs/1706.02677
@@ -343,16 +343,16 @@ class ResNet(nn.Module):
 				)
 			)
 
-		if(trainGreedy):
+		if(trainLocal):
 			sequential = sequentialMultiInput(*layers)
 		else:
 			sequential = nn.Sequential(*layers)
 		
 		return sequential
 
-	if(trainGreedy):
+	if(trainLocal):
 		def forward(self, x, trainOrTest=False, optim=None):
-			x, lossAvg = vicregBiological_resnetGreedy.ResNetForwardVicregGreedy(self, x, trainOrTest, optim)
+			x, lossAvg = VICRegORpt_resnet_vicregLocal.ResNetForwardVicregLocal(self, x, trainOrTest, optim)
 			if(trainOrTest):
 				return x, lossAvg
 			else:

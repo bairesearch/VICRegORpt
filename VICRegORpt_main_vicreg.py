@@ -13,10 +13,10 @@ import os
 import sys
 import time
 
-from vicregBiological_globalDefs import *
+from VICRegORpt_globalDefs import *
 if(vicregBiologicalMods):
-	import vicregBiological_operations
-	import vicregBiological_resnetGreedy
+	import VICRegORpt_operations
+	import VICRegORpt_resnet_vicregLocal
 distributedExecution = False
 learningRateWarmup = True
 saveModelEveryEpoch = True
@@ -25,17 +25,17 @@ import torch
 import torch.nn.functional as F
 from torch import nn, optim
 if(distributedExecution):
-	import torch.distributed as dist
+	import torch.VICRegORpt_distributed as dist
 import torchvision.datasets as datasets
 
-import augmentations as aug
+import VICRegORpt_augmentations as aug
 if(distributedExecution):
-	from distributed import init_distributed_mode
+	from VICRegORpt_distributed import init_distributed_mode
 
 #if(not distributedExecution):
 #	from torch.utils.data.sampler import []_sampler
 
-import resnet
+import VICRegORpt_resnet
 
 def get_arguments():
 	parser = argparse.ArgumentParser(description="Pretrain a resnet model with VICReg", add_help=False)
@@ -91,10 +91,10 @@ def get_arguments():
 	#Distributed
 	if(distributedExecution):
 		parser.add_argument('--world-size', default=1, type=int,
-							help='number of distributed processes')
+							help='number of VICRegORpt_distributed processes')
 		parser.add_argument('--local_rank', default=-1, type=int)
 		parser.add_argument('--dist-url', default='env://',
-							help='url used to set up distributed training')					  
+							help='url used to set up VICRegORpt_distributed training')					  
 	else:
 		parser.add_argument('--rank', default=0, type=int)
 
@@ -120,7 +120,7 @@ def main(args):
 
 	dataset = datasets.ImageFolder(args.data_dir / "train", transforms)
 	if(distributedExecution):
-		sampler = torch.utils.data.distributed.DistributedSampler(dataset, shuffle=True)
+		sampler = torch.utils.data.VICRegORpt_distributed.DistributedSampler(dataset, shuffle=True)
 		assert args.batch_size % args.world_size == 0
 		per_device_batch_size = args.batch_size // args.world_size
 		loader = torch.utils.data.DataLoader(
@@ -154,12 +154,12 @@ def main(args):
 	)
 	
 	if(vicregBiologicalMods):
-		vicregBiological_operations.weightsSetPositiveModel(model.backbone)
-		if(trainGreedy):
-			if(trainGreedyIndependentBatchNorm):
+		VICRegORpt_operations.weightsSetPositiveModel(model.backbone)
+		if(trainLocal):
+			if(trainLocalIndependentBatchNorm):
 				args.trainOrTest = True
-			resnet.setArgs(args)	#required for local loss function
-			optim = vicregBiological_resnetGreedy.createLocalOptimisers(model)
+			VICRegORpt_resnet.setArgs(args)	#required for local loss function
+			optim = VICRegORpt_resnet_vicregLocal.createLocalOptimisers(model)
 			
 	if (args.exp_dir / "model.pth").is_file():
 		if args.rank == 0:
@@ -180,7 +180,7 @@ def main(args):
 			x = x.cuda(gpu, non_blocking=True)
 			y = y.cuda(gpu, non_blocking=True)
 	
-			if(trainGreedy):
+			if(trainLocal):
 				xAll = torch.cat((x, y), dim=0)
 				loss = model.forward(xAll, True, optim)
 				lr = learningRateLocal
@@ -253,12 +253,12 @@ class VICReg(nn.Module):
 		super().__init__()
 		self.args = args
 		self.num_features = int(args.mlp.split("-")[-1])
-		self.backbone, self.embedding = resnet.__dict__[args.arch](
+		self.backbone, self.embedding = VICRegORpt_resnet.__dict__[args.arch](
 			zero_init_residual=True
 		)
 		self.projector = Projector(args, self.embedding)
 			
-	if(trainGreedy):
+	if(trainLocal):
 		def forward(self, x, trainOrTest, optim):
 			x, lossAvg = self.backbone(x, trainOrTest, optim)
 			return lossAvg

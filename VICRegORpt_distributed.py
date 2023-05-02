@@ -8,7 +8,7 @@
 
 import torch
 import os
-import torch.distributed as dist
+import torch.VICRegORpt_distributed as dist
 
 
 def setup_for_distributed(is_master):
@@ -68,14 +68,14 @@ def init_distributed_mode(args):
 		os.environ['LOCAL_RANK'] = str(args.gpu)
 		os.environ['WORLD_SIZE'] = str(args.world_size)
 	else:
-		print('Not using distributed mode')
+		print('Not using VICRegORpt_distributed mode')
 		return
 
 	torch.cuda.set_device(args.gpu)
 	args.dist_backend = 'nccl'
-	print('| distributed init (rank {}): {}, gpu {}'.format(
+	print('| VICRegORpt_distributed init (rank {}): {}, gpu {}'.format(
 		args.rank, args.dist_url, args.gpu), flush=True)
-	torch.distributed.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
+	torch.VICRegORpt_distributed.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
 										 world_size=args.world_size, rank=args.rank)
-	torch.distributed.barrier()
+	torch.VICRegORpt_distributed.barrier()
 	setup_for_distributed(args.rank == 0)

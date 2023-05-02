@@ -1,4 +1,4 @@
-"""vicregBiological_resnetGreedy.py
+"""VICRegORpt_resnet_vicregLocal.py
 
 # Author:
 Richard Bruce Baxter - Copyright (c) 2022-2023 Baxter AI (baxterai.com)
@@ -7,17 +7,17 @@ Richard Bruce Baxter - Copyright (c) 2022-2023 Baxter AI (baxterai.com)
 MIT License
 
 # Installation:
-see vicregBiological_globalDefs.py
+see VICRegORpt_globalDefs.py
 
 # Usage:
-see vicregBiological_globalDefs.py
+see VICRegORpt_globalDefs.py
 
 # Description:
 vicreg biological resnet greedy
 
 """
 
-from vicregBiological_globalDefs import *
+from VICRegORpt_globalDefs import *
 import torch
 import torch.nn as nn
 import statistics
@@ -27,14 +27,14 @@ def setArgs(argsNew):
 	global args
 	global trainOrTest
 	args = argsNew
-	if(trainGreedyIndependentBatchNorm):
+	if(trainLocalIndependentBatchNorm):
 		trainOrTest = args.trainOrTest
 		
-def InputForwardVicregGreedy(self, x, lossSum, lossIndex, trainOrTest, optim):
+def InputForwardVicregLocal(self, x, lossSum, lossIndex, trainOrTest, optim):
 	out = x
 
-	if(debugTrainGreedy):
-		print("InputForwardVicregGreedy")
+	if(debugTrainLocal):
+		print("InputForwardVicregLocal")
 		print("l1 = ", self.l1)
 		print("l2 = ", self.l2)
 		print("x = ", x)
@@ -52,12 +52,12 @@ def InputForwardVicregGreedy(self, x, lossSum, lossIndex, trainOrTest, optim):
 
 	return out, lossSum, lossIndex, trainOrTest, optim
 
-def BasicBlockForwardVicregGreedy(self, x, lossSum, lossIndex, trainOrTest, optim):
+def BasicBlockForwardVicregLocal(self, x, lossSum, lossIndex, trainOrTest, optim):
 	identity1 = x
 	out = x
 
-	if(debugTrainGreedy):
-		print("BasicBlockForwardVicregGreedy")
+	if(debugTrainLocal):
+		print("BasicBlockForwardVicregLocal")
 		print("l1 = ", self.l1)
 		print("l2 = ", self.l2)
 		print("x = ", x)
@@ -92,12 +92,12 @@ def BasicBlockForwardVicregGreedy(self, x, lossSum, lossIndex, trainOrTest, opti
 
 	return out, lossSum, lossIndex, trainOrTest, optim
 
-def BottleneckForwardVicregGreedy(self, x, lossSum, lossIndex, trainOrTest, optim):
+def BottleneckForwardVicregLocal(self, x, lossSum, lossIndex, trainOrTest, optim):
 	identity1 = x
 	out = x
 
-	if(debugTrainGreedy):
-		print("BottleneckForwardVicregGreedy")
+	if(debugTrainLocal):
+		print("BottleneckForwardVicregLocal")
 		print("l1 = ", self.l1)
 		print("l2 = ", self.l2)
 		print("x = ", x)
@@ -141,7 +141,7 @@ def BottleneckForwardVicregGreedy(self, x, lossSum, lossIndex, trainOrTest, opti
 
 	return out, lossSum, lossIndex, trainOrTest, optim
 
-def ResNetForwardVicregGreedy(self, x, trainOrTest, optim):
+def ResNetForwardVicregLocal(self, x, trainOrTest, optim):
 	x = self.padding(x)
 
 	lossSum = 0.0
@@ -169,7 +169,7 @@ def trainLayerLocal(self, x, trainOrTest, optim, l1, l2, l3):
 		batchSize = x.shape[0]
 		x1, x2 = torch.split(x, batchSize//2, dim=0)
 		
-		if(debugTrainGreedy):
+		if(debugTrainLocal):
 			print("trainLayerLocal: l1 = ", l1, ", l2 = ", l2, ", l3 = ", l3)
 			
 		loss = None
@@ -185,17 +185,23 @@ def trainLayerLocal(self, x, trainOrTest, optim, l1, l2, l3):
 
 		x = x.detach()
 	else:
-		print("trainLayerLocal warning: currently requires trainOrTest=True")
-		pass
+		printe("trainLayerLocal error: currently requires trainOrTest=True")
 
 	return x, loss
 
 def calculateLossVICregLocal(self, x, y):
-	x = torch.flatten(x, 1)	#convert to linear for VICreg
-	y = torch.flatten(y, 1)	#convert to linear for VICreg
+
+	#convert to linear for VICreg
+	if(trainLocalConvLocationIndependence):
+		x = pt.reshape(x, (x.shape[0]*x.shape[2]*x.shape[3], x.shape[1])) 
+		y = pt.reshape(y, (y.shape[0]*y.shape[2]*y.shape[3], y.shape[1]))
+	else:
+		x = torch.flatten(x, 1)
+		y = torch.flatten(y, 1)
+	
 	num_features = x.shape[1]
 	batch_size = x.shape[0]
-	if(debugTrainGreedy):
+	if(debugTrainLocal):
 		print("num_features = ", num_features)
 		print("batch_size = ", batch_size)
 		print("x = ", x)
@@ -258,7 +264,7 @@ def createLocalOptimisers(model):
 	optim = l1optim
 	return optim
 
-if(trainGreedyIndependentBatchNorm):
+if(trainLocalIndependentBatchNorm):
 	class BatchNormLayerVICregLocal(nn.Module):
 		def __init__(self, num_out_filters):
 			super(BatchNormLayerVICregLocal, self).__init__()

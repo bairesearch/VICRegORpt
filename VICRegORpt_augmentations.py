@@ -10,7 +10,7 @@ import numpy as np
 import torchvision.transforms as transforms
 from torchvision.transforms import InterpolationMode
 
-from vicregBiological_globalDefs import *
+from VICRegORpt_globalDefs import *
 
 
 class GaussianBlur(object):

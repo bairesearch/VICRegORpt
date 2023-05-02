@@ -20,9 +20,9 @@ from torch import nn, optim
 from torchvision import datasets, transforms
 import torch
 
-import resnet
+import VICRegORpt_resnet
 
-from vicregBiological_globalDefs import *
+from VICRegORpt_globalDefs import *
 distributedExecution = False
 saveModelEveryEpoch = True
 
@@ -122,7 +122,7 @@ def main():
 		if "SLURM_JOB_ID" in os.environ:
 			signal.signal(signal.SIGUSR1, handle_sigusr1)
 			signal.signal(signal.SIGTERM, handle_sigterm)
-		# single-node distributed training
+		# single-node VICRegORpt_distributed training
 		args.rank = 0
 		args.dist_url = f"tcp://localhost:{random.randrange(49152, 65535)}"
 		args.world_size = args.ngpus_per_node
@@ -137,7 +137,7 @@ def main_worker(gpu, args):
 	
 	if(distributedExecution):
 		args.rank += gpu
-		torch.distributed.init_process_group(
+		torch.VICRegORpt_distributed.init_process_group(
 			backend="nccl",
 			init_method=args.dist_url,
 			world_size=args.world_size,
@@ -153,7 +153,7 @@ def main_worker(gpu, args):
 	torch.cuda.set_device(gpu)
 	torch.backends.cudnn.benchmark = True
 
-	backbone, embedding = resnet.__dict__[args.arch](zero_init_residual=True)
+	backbone, embedding = VICRegORpt_resnet.__dict__[args.arch](zero_init_residual=True)
 	state_dict = torch.load(args.pretrained, map_location="cpu")
 	if "model" in state_dict:
 		state_dict = state_dict["model"]
@@ -163,15 +163,15 @@ def main_worker(gpu, args):
 		}
 	backbone.load_state_dict(state_dict, strict=False)
 	
-	if(trainGreedy):
-		if(trainGreedyIndependentBatchNorm):
+	if(trainLocal):
+		if(trainLocalIndependentBatchNorm):
 			args.trainOrTest = False
-		resnet.setArgs(args)	#required for local loss function
+		VICRegORpt_resnet.setArgs(args)	#required for local loss function
 		
 	head = nn.Linear(embedding, 1000)
 	head.weight.data.normal_(mean=0.0, std=0.01)
 	head.bias.data.zero_()
-	if(trainGreedy):
+	if(trainLocal):
 		model = sequentialMultiInput(backbone, head)
 	else:
 		model = nn.Sequential(backbone, head)
@@ -243,7 +243,7 @@ def main_worker(gpu, args):
 			)
 
 	if(distributedExecution):
-		train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, shuffle=True)
+		train_sampler = torch.utils.data.VICRegORpt_distributed.DistributedSampler(train_dataset, shuffle=True)
 		batch_size = args.batch_size // args.world_size
 	else:
 		#train_sampler = torch.utils.data.RandomSampler(train_dataset) #sample from a shuffled dataset
@@ -281,7 +281,7 @@ def main_worker(gpu, args):
 		for step, (images, target) in enumerate(
 			train_loader, start=epoch * len(train_loader)
 		):
-			if(trainGreedy):
+			if(trainLocal):
 				output = model(images.cuda(gpu, non_blocking=True), False, None)
 			else:
 				output = model(images.cuda(gpu, non_blocking=True))
@@ -291,7 +291,7 @@ def main_worker(gpu, args):
 			optimizer.step()
 			if step % args.print_freq == 0:
 				if(distributedExecution):
-					torch.distributed.reduce(loss.div_(args.world_size), 0)
+					torch.VICRegORpt_distributed.reduce(loss.div_(args.world_size), 0)
 				if args.rank == 0:
 					pg = optimizer.param_groups
 					lr_head = pg[0]["lr"]
