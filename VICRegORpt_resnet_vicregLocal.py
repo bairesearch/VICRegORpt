@@ -189,52 +189,111 @@ def trainLayerLocal(self, x, trainOrTest, optim, l1, l2, l3):
 
 	return x, loss
 
-def calculateLossVICregLocal(self, x, y):
+#distributedExecution not currently supported
+def calculateLossVICregLocal(self, x1, x2):
 
 	#convert to linear for VICreg
+	imageSize = x1.shape[2]*x1.shape[3]
 	if(trainLocalConvLocationIndependence):
-		x = pt.reshape(x, (x.shape[0]*x.shape[2]*x.shape[3], x.shape[1])) 
-		y = pt.reshape(y, (y.shape[0]*y.shape[2]*y.shape[3], y.shape[1]))
+		if(trainLocalConvLocationIndependenceAllPixels):
+			x1 = pt.reshape(x1, (x1.shape[0], imageSize, x1.shape[1])) 
+			x2 = pt.reshape(x2, (x2.shape[0], imageSize, x2.shape[1]))
+			if(trainLocalConvLocationIndependenceAllPixelsCombinations):
+				x1 = x1.repeat(1, imageSize, 1)
+				x2 = torch.repeat_interleave(x2, imageSize, dim=1)
+		elif(trainLocalConvLocationIndependenceSinglePixelRandom):
+			randPixelX = pt.randint(0, x1.shape[2], (1,))
+			randPixelY = pt.randint(0, x1.shape[3], (1,))
+			x1 = x1[:, :, randPixelX[0], randPixelY[0]]
+			x2 = x2[:, :, randPixelX[0], randPixelY[0]]		
 	else:
-		x = torch.flatten(x, 1)
-		y = torch.flatten(y, 1)
+		x1 = torch.flatten(x1, 1)
+		x2 = torch.flatten(x2, 1)
 	
-	num_features = x.shape[1]
-	batch_size = x.shape[0]
+	num_features = x1.shape[1]
+	batch_size = x1.shape[0]
 	if(debugTrainLocal):
 		print("num_features = ", num_features)
 		print("batch_size = ", batch_size)
-		print("x = ", x)
-		print("y = ", y)
+		print("x1 = ", x1)
+		print("x2 = ", x2)
 
-	repr_loss = F.mse_loss(x, y)
+	if(trainLocalConvLocationIndependenceAllPixelsSequential):
+		numberOfPixelsIter = imageSize
+		lossPixelList = []
+	else:
+		numberOfPixelsIter = 1
+		if(trainLocalConvLocationIndependenceAllPixels):
+			x1Sim = pt.reshape(x1, (x1.shape[0]*x1.shape[1], x1.shape[2])) 	#merge pixel dim with batch dim
+			x2Sim = pt.reshape(x2, (x2.shape[0]*x2.shape[1], x2.shape[2])) 	#merge pixel dim with batch dim
+		else:
+			x1Sim = x1
+			x2Sim = x2
+		#if(distributedExecution):	#not currently supported
+		#	x1Var = torch.cat(FullGatherLayer.apply(x1Var), dim=0)
+		#	x2Var = torch.cat(FullGatherLayer.apply(x2Var), dim=0)
+		x1Var = x1 - x1.mean(dim=0)	#maintain batch dim
+		x2Var = x2 - x2.mean(dim=0)	#maintain batch dim
+		if(trainLocalConvLocationIndependenceAllPixels):
+			x1Cov = pt.reshape(x1Var, (x1Var.shape[1], x1Var.shape[0], x1Var.shape[2]))	#set pixel dim as batch dim
+			x2Cov = pt.reshape(x2Var, (x2Var.shape[1], x2Var.shape[0], x2Var.shape[2]))	#set pixel dim as batch dim
+		else:
+			x1Cov = x1Var
+			x2Cov = x2Var
+		
+	for i in range(numberOfPixelsIter):
+		if(trainLocalConvLocationIndependenceAllPixelsSequential):
+			#print("i = ", i)
+			x1Sim = x1[:, i]
+			x2Sim = x2[:, i]
+			x1Var = x1[:, i]
+			x2Var = x2[:, i]
+			#if(distributedExecution):	#not currently supported
+			#	x1Var = torch.cat(FullGatherLayer.apply(x1), dim=0)
+			#	x2Var = torch.cat(FullGatherLayer.apply(x2), dim=0)
+			x1Var = x1Var - x1Var.mean(dim=0)
+			x2Var = x2Var - x2Var.mean(dim=0)
+			x1Cov = x1Var
+			x2Cov = x2Var
 
-	#if(distributedExecution):	#not currently supported
-	#	x = torch.cat(FullGatherLayer.apply(x), dim=0)
-	#	y = torch.cat(FullGatherLayer.apply(y), dim=0)
-	x = x - x.mean(dim=0)
-	y = y - y.mean(dim=0)
+		repr_loss = F.mse_loss(x1Sim, x2Sim)
 
-	std_x = torch.sqrt(x.var(dim=0) + 0.0001)
-	std_y = torch.sqrt(y.var(dim=0) + 0.0001)
-	std_loss = torch.mean(F.relu(1 - std_x)) / 2 + torch.mean(F.relu(1 - std_y)) / 2
+		std_x1 = torch.sqrt(x1Var.var(dim=0) + 0.0001)
+		std_x2 = torch.sqrt(x1Var.var(dim=0) + 0.0001)
+		std_loss = torch.mean(F.relu(1 - std_x1)) / 2 + torch.mean(F.relu(1 - std_x2)) / 2
 
-	cov_x = (x.T @ x) / (batch_size - 1)
-	cov_y = (y.T @ y) / (batch_size - 1)
-
-	cov_loss = off_diagonal(cov_x).pow_(2).sum().div(num_features) + off_diagonal(cov_y).pow_(2).sum().div(num_features)
-
-	loss = (
-		args.sim_coeff * repr_loss
-		+ args.std_coeff * std_loss
-		+ args.cov_coeff * cov_loss
-	)
+		if(trainLocalConvLocationIndependenceAllPixels):
+			x1CovT = x1Cov.permute(0, 2, 1)
+			x2CovT = x2Cov.permute(0, 2, 1)
+		else:
+			x1CovT = x1Cov.T
+			x2CovT = x2Cov.T
+		cov_x = (x1CovT @ x1Cov) / (batch_size - 1)
+		cov_y = (x2CovT @ x2Cov) / (batch_size - 1)
+		if(trainLocalConvLocationIndependenceAllPixels):
+			cov_loss = off_diagonal(cov_x).pow_(2).sum().div(num_features*imageSize)
+		else:
+			cov_loss = off_diagonal(cov_x).pow_(2).sum().div(num_features) + off_diagonal(cov_y).pow_(2).sum().div(num_features)
+		
+		loss = (args.sim_coeff * repr_loss + args.std_coeff * std_loss + args.cov_coeff * cov_loss)
+		if(trainLocalConvLocationIndependenceAllPixelsSequential):
+			lossPixelList.append(loss) 
+		
+	if(trainLocalConvLocationIndependenceAllPixelsSequential):
+		loss = torch.mean(torch.stack(lossPixelList))
+	
 	return loss
 
 def off_diagonal(x):
-	n, m = x.shape
-	assert n == m
-	return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
+	if(trainLocalConvLocationIndependenceAllPixels):
+		b, n, m = x.shape
+		assert n == m
+		off = x.flatten(start_dim=1)[:, :-1].view(b, n - 1, n + 1)[:, :, 1:].flatten()
+	else:
+		n, m = x.shape
+		assert n == m
+		off = x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
+	return off
 
 
 def createLocalOptimisers(model):
