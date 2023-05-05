@@ -205,7 +205,10 @@ def calculateLossVICregLocal(self, x1, x2):
 			randPixelX = pt.randint(0, x1.shape[2], (1,))
 			randPixelY = pt.randint(0, x1.shape[3], (1,))
 			x1 = x1[:, :, randPixelX[0], randPixelY[0]]
-			x2 = x2[:, :, randPixelX[0], randPixelY[0]]		
+			x2 = x2[:, :, randPixelX[0], randPixelY[0]]	
+		elif(trainLocalConvLocationIndependenceAveragedPixels):
+			x1 = torch.mean(x1, dim=(2, 3), keepdim=False)
+			x2 = torch.mean(x2, dim=(2, 3), keepdim=False)
 	else:
 		x1 = torch.flatten(x1, 1)
 		x2 = torch.flatten(x2, 1)

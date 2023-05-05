@@ -87,14 +87,16 @@ if(vicregBiologicalMods):
 			trainLocalIndependentBatchNorm = True	#default:True	#TODO: perform experimentation to check performance difference (is perfect batch norm required?)
 		trainLocalConvLocationIndependence = True 	#local VICReg Conv2D implementation independent of location
 		if(trainLocalConvLocationIndependence):
-			trainLocalConvLocationIndependenceAllPixels = True	#use data from all Conv2D filter pixels for VICReg calculations
+			trainLocalConvLocationIndependenceAveragedPixels = True	#average pixel values across each Conv2D filter
+			trainLocalConvLocationIndependenceAllPixels = False	#use data from all Conv2D filter pixels for VICReg calculations
+			trainLocalConvLocationIndependenceSinglePixelRandom = False	#reduces number of comparisons by randomising matched pixel pairs in image
+			smallInputImageSize = False
 			if(trainLocalConvLocationIndependenceAllPixels):
 				trainLocalConvLocationIndependenceAllPixelsSequential = False	#optional	#execute VICReg on pixels sequentially
-				trainLocalConvLocationIndependenceAllPixelsCombinations = False	#calculate VICReg on all pixel pair combinations sequentially
-				trainLocalConvLocationIndependenceAllPixelsMatched = True	#calculate VICReg on each pixel pair sequentially
-			else:
-				trainLocalConvLocationIndependenceSinglePixelRandom = True	#reduces number of comparisons by randomising matched pixel pairs in image
-			smallInputImageSize = False
+				trainLocalConvLocationIndependenceAllPixelsCombinations = True	#calculate VICReg on all pixel pair combinations sequentially
+				trainLocalConvLocationIndependenceAllPixelsMatched = False	#calculate VICReg on each pixel pair sequentially
+				if(trainLocalConvLocationIndependenceAllPixelsCombinations):
+					smallInputImageSize = True
 		else:
 			smallInputImageSize = True	#required for vicregBiologicalMods:trainLocal:!trainLocalConvLocationIndependence due to cov_x = (x.T @ x) operation on large image size
 	else:

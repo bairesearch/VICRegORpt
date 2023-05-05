@@ -8,7 +8,7 @@ Copyright (c) Facebook, Inc. and its affiliates.
 
 ### Description
 
-Variance-Invariance-Covariance Regularization Object Recognition (VICRegOR) for PyTorch - experimental
+Variance-Invariance-Covariance Regularization Object Recognition (VICRegOR) for PyTorch - local/greedy training and positive weights (biological simulation) - experimental
 
 An implementation of;
 Bardes, A., Ponce, J., & LeCun, Y. (2021). Vicreg: Variance-invariance-covariance regularization for self-supervised learning. arXiv preprint arXiv:2105.04906.
