@@ -27,7 +27,7 @@ def setArgs(argsNew):
 	global args
 	global trainOrTest
 	args = argsNew
-	if(trainLocalIndependentBatchNorm):
+	if(trainLocal):
 		trainOrTest = args.trainOrTest
 		
 def InputForwardVicregLocal(self, x, lossSum, lossIndex, trainOrTest, optim):
@@ -83,6 +83,8 @@ def BasicBlockForwardVicregLocal(self, x, lossSum, lossIndex, trainOrTest, optim
 	if self.downsample is not None:
 		identity1 = self.downsample(x)
 	out += identity1
+	if(normaliseActivationSparsityLayerSkip):
+		out = self.bnSkip(out)
 	out = self.relu(out)
 
 	if(trainOrTest):
@@ -132,6 +134,8 @@ def BottleneckForwardVicregLocal(self, x, lossSum, lossIndex, trainOrTest, optim
 	if self.downsample is not None:
 		identity1 = self.downsample(x)
 	out += identity1
+	if(normaliseActivationSparsityLayerSkip):
+		out = self.bnSkip(out)
 	out = self.last_activation(out)
 
 	if(trainOrTest):
@@ -326,20 +330,18 @@ def createLocalOptimisers(model):
 	optim = l1optim
 	return optim
 
-if(trainLocalIndependentBatchNorm):
-	class BatchNormLayerVICregLocal(nn.Module):
-		def __init__(self, num_out_filters):
-			super(BatchNormLayerVICregLocal, self).__init__()
-			self.normFunction = nn.BatchNorm2d(num_out_filters)
+class ArbitraryLayerVICregLocal(nn.Module):
+	def __init__(self, layerFunction):
+		super(ArbitraryLayerVICregLocal, self).__init__()
+		self.layerFunction = layerFunction	
 
-		def forward(self, x):
-			if(trainOrTest):
-				batchSize = x.shape[0]
-				x1, x2 = torch.split(x, batchSize//2, dim=0)
-				x1 = self.normFunction(x1)
-				x2 = self.normFunction(x2)
-				x = torch.cat((x1, x2), dim=0)
-			else:
-				x = self.normFunction(x)
-			return x
-			
+	def forward(self, x):
+		if(trainOrTest):
+			batchSize = x.shape[0]
+			x1, x2 = torch.split(x, batchSize//2, dim=0)
+			x1 = self.layerFunction(x1)
+			x2 = self.layerFunction(x2)
+			x = torch.cat((x1, x2), dim=0)
+		else:
+			x = self.layerFunction(x)
+		return x

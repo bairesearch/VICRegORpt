@@ -38,7 +38,7 @@ def get_arguments():
 		default=100,
 		type=int,
 		choices=(100, 10, 1),
-		help="size of traing set in percent",
+		help="size of training set in percent",
 	)
 
 	# Checkpoint
@@ -164,7 +164,7 @@ def main_worker(gpu, args):
 	backbone.load_state_dict(state_dict, strict=False)
 	
 	if(trainLocal):
-		if(trainLocalIndependentBatchNorm):
+		if(trainLocal):
 			args.trainOrTest = False
 		VICRegORpt_resnet.setArgs(args)	#required for local loss function
 		

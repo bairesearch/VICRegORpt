@@ -12,6 +12,9 @@ from VICRegORpt_globalDefs import *
 if(trainLocal):
 	import VICRegORpt_resnet_vicregLocal
 	from VICRegORpt_resnet_vicregLocal import sequentialMultiInput
+if(vicregBiologicalMods):
+	import VICRegORpt_resnet_positiveWeights
+
 
 def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1):
 	"""3x3 convolution with padding"""
@@ -34,15 +37,12 @@ if(trainLocal):
 	def setArgs(argsNew):
 		VICRegORpt_resnet_vicregLocal.setArgs(argsNew)
 
-def createNormLayer(norm_layer):
+def createBatchNormLayer(norm_layer):
 	if norm_layer is None:
-		if(normaliseActivationSparsity):
-			norm_layer = nn.InstanceNorm2d	#nn.GroupNorm(1, num_out_filters)
+		if(vicregBiologicalMods):
+			norm_layer = VICRegORpt_resnet_positiveWeights.createBatchNormLayer()
 		else:
-			if(trainLocalIndependentBatchNorm):
-				norm_layer = VICRegORpt_resnet_vicregLocal.BatchNormLayerVICregLocal
-			else:
-				norm_layer = nn.BatchNorm2d
+			norm_layer = nn.BatchNorm2d
 	return norm_layer
 				
 class Input(nn.Module):
@@ -59,9 +59,9 @@ class Input(nn.Module):
 			padding=2,
 			bias=False,
 		)
-		norm_layer = createNormLayer(norm_layer)
+		norm_layer = createBatchNormLayer(norm_layer)
 		self.bn1 = norm_layer(num_out_filters)
-		self.relu = nn.ReLU(inplace=True)
+		self.relu = VICRegORpt_resnet_positiveWeights.generateActivationFunction()
 		self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
 		self.l1 = l1
 		self.l2 = l2
@@ -97,7 +97,7 @@ class BasicBlock(nn.Module):
 		l2=None,
 	):
 		super(BasicBlock, self).__init__()
-		norm_layer = createNormLayer(norm_layer)
+		norm_layer = createBatchNormLayer(norm_layer)
 		if groups != 1 or base_width != 64:
 			raise ValueError("BasicBlock only supports groups=1 and base_width=64")
 		if dilation > 1:
@@ -105,13 +105,17 @@ class BasicBlock(nn.Module):
 		# Both self.conv1 and self.downsample layers downsample the input when stride != 1
 		self.conv1 = conv3x3(inplanes, planes, stride)
 		self.bn1 = norm_layer(planes)
-		self.relu = nn.ReLU(inplace=True)
+		self.relu = VICRegORpt_resnet_positiveWeights.generateActivationFunction()
 		self.conv2 = conv3x3(planes, planes)
 		self.bn2 = norm_layer(planes)
 		self.downsample = downsample
 		self.stride = stride
 		self.l1 = l1
 		self.l2 = l2
+		if(normaliseActivationSparsityLayerSkip):
+			expansion = 1
+			lnorm_layer = VICRegORpt_resnet_positiveWeights.createLayerNormLayer()
+			self.lnSkip = lnorm_layer(planes*expansion)
 
 	if(trainLocal):
 		def forward(self, x, lossSum, lossIndex, trainOrTest, optim):
@@ -131,6 +135,8 @@ class BasicBlock(nn.Module):
 				identity = self.downsample(x)
 	
 			out += identity
+			if(normaliseActivationSparsityLayerSkip):
+				out = self.lnSkip(out)
 			out = self.relu(out)
 	
 			return out
@@ -156,7 +162,7 @@ class Bottleneck(nn.Module):
 		l2=None,
 	):
 		super(Bottleneck, self).__init__()
-		norm_layer = createNormLayer(norm_layer)
+		norm_layer = createBatchNormLayer(norm_layer)
 		width = int(planes * (base_width / 64.0)) * groups
 		# Both self.conv2 and self.downsample layers downsample the input when stride != 1
 		self.conv1 = conv1x1(inplanes, width)
@@ -165,14 +171,18 @@ class Bottleneck(nn.Module):
 		self.bn2 = norm_layer(width)
 		self.conv3 = conv1x1(width, planes * self.expansion)
 		self.bn3 = norm_layer(planes * self.expansion)
-		self.relu = nn.ReLU(inplace=True)
+		self.relu = VICRegORpt_resnet_positiveWeights.generateActivationFunction()
 		self.downsample = downsample
 		self.stride = stride
 		self.l1 = l1
 		self.l2 = l2
+		if(normaliseActivationSparsityLayerSkip):
+			expansion = 4
+			lnorm_layer = VICRegORpt_resnet_positiveWeights.createLayerNormLayer()
+			self.lnSkip = lnorm_layer(planes*expansion)
 
 		if last_activation == "relu":
-			self.last_activation = nn.ReLU(inplace=True)
+			self.last_activation = VICRegORpt_resnet_positiveWeights.generateActivationFunction()
 		elif last_activation == "none":
 			self.last_activation = nn.Identity()
 		elif last_activation == "sigmoid":
@@ -200,6 +210,8 @@ class Bottleneck(nn.Module):
 				identity = self.downsample(x)
 	
 			out += identity
+			if(normaliseActivationSparsityLayerSkip):
+				out = self.lnSkip(out)
 			out = self.last_activation(out)
 	
 			return out
@@ -220,7 +232,7 @@ class ResNet(nn.Module):
 		last_activation="relu",
 	):
 		super(ResNet, self).__init__()
-		norm_layer = createNormLayer(norm_layer)
+		norm_layer = createBatchNormLayer(norm_layer)
 		self._norm_layer = norm_layer
 		# self._last_activation = last_activation
 
@@ -285,7 +297,7 @@ class ResNet(nn.Module):
 				nn.init.constant_(m.weight, 1)
 				nn.init.constant_(m.bias, 0)
 
-		if(not normaliseActivationSparsity and not trainLocalIndependentBatchNorm):
+		if(not normaliseActivationSparsityLayer and not trainLocal):
 			# Zero-initialize the last BN in each residual branch,
 			# so that the residual branch starts with zeros, and each residual block behaves like an identity.
 			# This improves the model by 0.2~0.3% according to https://arxiv.org/abs/1706.02677

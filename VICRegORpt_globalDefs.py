@@ -19,14 +19,25 @@ https://s3.amazonaws.com/fast-ai-imageclas/imagenette2-320.tgz
 
 # Usage:
 
-#Training
+#Train backbone using VICReg
 source activate pytorchsenv
 python VICRegORpt/VICRegORpt_main_vicreg.py --data-dir datasets/imagenette2-320 --exp-dir out/exp --arch resnet50 --epochs 10 --batch-size 64 --base-lr 0.3
-	NOTUSED; python VICRegORpt/VICRegORpt_main_vicreg.py --data-dir datasets/tiny-imagenet-200 --exp-dir out/exp --arch resnet50 --epochs 100 --batch-size 64 --base-lr 0.3
 
-#Linear evaluation
+#Train head + evaluation
 source activate pytorchsenv
 python VICRegORpt/VICRegORpt_evaluate.py --data-dir datasets/imagenette2-320 --pretrained out/exp/resnet50.pth --exp-dir ./out/exp --epochs 10 --batch-size 64 --lr-head 0.02
+
+#Train backbone using Backprop + head + evaluation
+source activate pytorchsenv
+python VICRegORpt/VICRegORpt_main_vicreg.py --data-dir datasets/imagenette2-320 --exp-dir out/exp --arch resnet50 --epochs 0 #[generate model]
+python VICRegORpt/VICRegORpt_evaluate.py --data-dir datasets/imagenette2-320 --pretrained out/exp/resnet50.pth --exp-dir out/exp --batch-size 64 --weights finetune --epochs 100 --lr-backbone 0.005 --lr-head 0.05 --weight-decay 0
+
+---
+Dataset selection;
+--data-dir datasets/imagenette2-320
+--data-dir datasets/tiny-imagenet-200
+--data-dir /media/user/datasets/imagenet
+
 
 	##Test out-of-distribution class classification after Backprop vs VICReg model backbone training;
 	- expbp: Resnet-50 top 1 performance trained on 50% of images with Backprop, evaluate top-1 performance when only training final layer [ie linear classifier] on 100% images
@@ -34,12 +45,9 @@ python VICRegORpt/VICRegORpt_evaluate.py --data-dir datasets/imagenette2-320 --p
 
 	###expbp (backprop 50% training, 100% linear eval);
 
-	#do not need to train, just generate model (expbp/resnet50.pth)
-	python VICRegORpt/VICRegORpt_main_vicreg.py --data-dir datasets/imagenette2-320-half --exp-dir out/expbp --arch resnet50 --epochs 1 --batch-size 64 --base-lr 0.3
-
 	#Backprop training with 50% classes
-	python VICRegORpt/VICRegORpt_evaluate.py --data-dir datasets/imagenette2-320-half --pretrained out/expbp/resnet50.pth --exp-dir out/expbp --batch-size 64 --weights finetune --train-perc 100 --epochs 100 --lr-backbone 0.3 --weight-decay 0
-		#FUTURE: consider using full imagenette2-320 dataset but train-perc parameter=50
+	python VICRegORpt/VICRegORpt_main_vicreg.py --data-dir datasets/imagenette2-320-half --exp-dir out/expbp --arch resnet50 --epochs 0	#[generate model]
+	python VICRegORpt/VICRegORpt_evaluate.py --data-dir datasets/imagenette2-320-half --pretrained out/expbp/resnet50.pth --exp-dir out/expbp --batch-size 64 --weights finetune --epochs 100 --lr-backbone 0.3 --weight-decay 0
 	rm expbp/checkpoint.pth
 
 	#Linear evaluation with 100% classes
@@ -49,7 +57,6 @@ python VICRegORpt/VICRegORpt_evaluate.py --data-dir datasets/imagenette2-320 --p
 
 	#VICReg hidden layer training with 50% classes
 	python VICRegORpt/VICRegORpt_main_vicreg.py --data-dir datasets/imagenette2-320-half --exp-dir out/expvr --batch-size 64 --arch resnet50 --epochs 100 --base-lr 0.3
-		#--train-perc 100 [implied]
 
 	#Linear evaluation with 100% classes
 	python VICRegORpt/VICRegORpt_evaluate.py --data-dir datasets/imagenette2-320 --pretrained out/expvr/resnet50.pth --exp-dir out/expvr --batch-size 64 --weights freeze --lr-head 0.02
@@ -67,24 +74,34 @@ vicregBiologicalMods = True
 #initialise (dependent vars);
 trainLocal = False
 usePositiveWeights = False
-normaliseActivationSparsity = False
-trainLocalIndependentBatchNorm = False
+normaliseActivationSparsityLayer = False
 smallInputImageSize = False
-trainLocalConvLocationIndependenceAllPixels = False	#initialise (dependent var)
-trainLocalConvLocationIndependenceAllPixelsSequential = False	#initialise (dependent var)
-		
+trainLocalConvLocationIndependenceAllPixels = False	
+trainLocalConvLocationIndependenceAllPixelsSequential = False
+normaliseActivationSparsityLayerSkip = False
+normaliseActivationSparsityBatch = True
+activationFunctionType = "relu"
+
 if(vicregBiologicalMods):
 	usePositiveWeights = False
 	if(usePositiveWeights):
+		activationFunctionType = "softmax"
+		#activationFunctionType = "none"
+		if(activationFunctionType == "softmax"):
+			activationFunctionTypeSoftmaxIndependentChannels = True	#optional
 		usePositiveWeightsClampModel = True	#clamp entire model weights to be positive (rather than per layer); currently required
-		normaliseActivationSparsity = True	#perform layer norm instead of batch norm (default resnet model setting)
+		normaliseActivationSparsityLayer = True	#perform layer norm instead of batch norm (default resnet model setting)
+		if(normaliseActivationSparsityLayer):
+			normaliseActivationSparsityLayerFunctionLayerNorm = False	#normalise all activations	#not currently supported; requires upgrade of codebase to specify shape of activation/image size
+			normaliseActivationSparsityLayerFunctionInstanceNorm2d = True	#normalise across conv2d channels independently	#orig
+			normaliseActivationSparsityLayerFunctionGroupNorm = False	#normalise across conv2d channels independently
+			normaliseActivationSparsityBatch = False	#perform standard specification batch norm as well as layer norm
+		normaliseActivationSparsityLayerSkip = False	#normalise activation across skip connections layer
 	trainLocal = True
 	if(trainLocal):
 		applyIndependentLearningForDownsample = False	#optional	#apply independent learning for downsample (conv1x1)	#not downsample is only used for first block in l1
 		learningRateLocal = 0.005
 		debugTrainLocal = False
-		if(not normaliseActivationSparsity):
-			trainLocalIndependentBatchNorm = True	#default:True	#TODO: perform experimentation to check performance difference (is perfect batch norm required?)
 		trainLocalConvLocationIndependence = True 	#local VICReg Conv2D implementation independent of location
 		if(trainLocalConvLocationIndependence):
 			trainLocalConvLocationIndependenceAveragedPixels = True	#average pixel values across each Conv2D filter
@@ -101,6 +118,8 @@ if(vicregBiologicalMods):
 			smallInputImageSize = True	#required for vicregBiologicalMods:trainLocal:!trainLocalConvLocationIndependence due to cov_x = (x.T @ x) operation on large image size
 	else:
 		smallInputImageSize = False	#optional (not required); can be used to ensure that experiments are equivalent [to trainLocal]
+
+smallInputImageSize = True	#temporary override for debugging only!
 
 if(smallInputImageSize):
 	imageWidth = 32	#needs to be sufficiently high such that convolutions do not prematurely converge	#cannot be too high else will run out of RAM

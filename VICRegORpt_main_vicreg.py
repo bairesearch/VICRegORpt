@@ -156,7 +156,7 @@ def main(args):
 	if(vicregBiologicalMods):
 		VICRegORpt_operations.weightsSetPositiveModel(model.backbone)
 		if(trainLocal):
-			if(trainLocalIndependentBatchNorm):
+			if(trainLocal):
 				args.trainOrTest = True
 			VICRegORpt_resnet.setArgs(args)	#required for local loss function
 			optim = VICRegORpt_resnet_vicregLocal.createLocalOptimisers(model)
@@ -170,6 +170,13 @@ def main(args):
 		optimizer.load_state_dict(ckpt["optimizer"])
 	else:
 		start_epoch = 0
+
+	if(saveModelEveryEpoch):
+		if(distributedExecution):
+			if args.rank == 0:
+				torch.save(model.module.backbone.state_dict(), args.exp_dir / "resnet50.pth")
+		else:
+			torch.save(model.backbone.state_dict(), args.exp_dir / "resnet50.pth")
 
 	start_time = last_logging = time.time()
 	scaler = torch.cuda.amp.GradScaler()
@@ -223,6 +230,7 @@ def main(args):
 					torch.save(model.module.backbone.state_dict(), args.exp_dir / "resnet50.pth")
 			else:
 				torch.save(model.backbone.state_dict(), args.exp_dir / "resnet50.pth")
+
 	if(not saveModelEveryEpoch):
 		if(distributedExecution):
 			if args.rank == 0:
