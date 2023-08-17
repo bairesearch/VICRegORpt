@@ -13,7 +13,7 @@ see VICRegORpt_globalDefs.py
 see VICRegORpt_globalDefs.py
 
 # Description:
-vicreg biological resnet greedy
+vicreg biological resnet local
 
 """
 
@@ -25,10 +25,7 @@ import torch.nn.functional as F
 
 def setArgs(argsNew):
 	global args
-	global trainOrTest
 	args = argsNew
-	if(trainLocal):
-		trainOrTest = args.trainOrTest
 		
 def InputForwardVicregLocal(self, x, lossSum, lossIndex, trainOrTest, optim):
 	out = x
@@ -44,7 +41,7 @@ def InputForwardVicregLocal(self, x, lossSum, lossIndex, trainOrTest, optim):
 	out = self.relu(out)
 
 	if(trainOrTest):
-		out, lossAvg0 = trainLayerLocal(self, out, trainOrTest, optim, self.l1, self.l2, l3=0)
+		out, lossAvg0 = trainLayerLocal(out, trainOrTest, optim, self.l1, self.l2, l3=0)
 		lossIndex+=1
 		lossSum+=lossAvg0
 
@@ -67,7 +64,7 @@ def BasicBlockForwardVicregLocal(self, x, lossSum, lossIndex, trainOrTest, optim
 	out = self.relu(out)
 
 	if(trainOrTest):
-		out, lossAvg0 = trainLayerLocal(self, out, trainOrTest, optim, self.l1, self.l2, l3=0)
+		out, lossAvg0 = trainLayerLocal(out, trainOrTest, optim, self.l1, self.l2, l3=0)
 		lossIndex+=1
 		lossSum+=lossAvg0
 
@@ -76,7 +73,7 @@ def BasicBlockForwardVicregLocal(self, x, lossSum, lossIndex, trainOrTest, optim
 
 	if(trainOrTest):
 		if(applyIndependentLearningForDownsample):
-			out, lossAvg1 = trainLayerLocal(self, out, trainOrTest, optim, self.l1, self.l2, l3=1)
+			out, lossAvg1 = trainLayerLocal(out, trainOrTest, optim, self.l1, self.l2, l3=1)
 			lossIndex+=1
 			lossSum+=lossAvg1
 
@@ -88,7 +85,7 @@ def BasicBlockForwardVicregLocal(self, x, lossSum, lossIndex, trainOrTest, optim
 	out = self.relu(out)
 
 	if(trainOrTest):
-		out, lossAvg2 = trainLayerLocal(self, out, trainOrTest, optim, self.l1, self.l2, l3=1+int(applyIndependentLearningForDownsample))
+		out, lossAvg2 = trainLayerLocal(out, trainOrTest, optim, self.l1, self.l2, l3=1+int(applyIndependentLearningForDownsample))
 		lossIndex+=1
 		lossSum+=lossAvg2
 
@@ -109,7 +106,7 @@ def BottleneckForwardVicregLocal(self, x, lossSum, lossIndex, trainOrTest, optim
 	out = self.relu(out)
 
 	if(trainOrTest):
-		out, lossAvg0 = trainLayerLocal(self, out, trainOrTest, optim, self.l1, self.l2, l3=0)
+		out, lossAvg0 = trainLayerLocal(out, trainOrTest, optim, self.l1, self.l2, l3=0)
 		lossIndex+=1
 		lossSum+=lossAvg0
 
@@ -118,7 +115,7 @@ def BottleneckForwardVicregLocal(self, x, lossSum, lossIndex, trainOrTest, optim
 	out = self.relu(out)
 
 	if(trainOrTest):
-		out, lossAvg1 = trainLayerLocal(self, out, trainOrTest, optim, self.l1, self.l2, l3=1)
+		out, lossAvg1 = trainLayerLocal(out, trainOrTest, optim, self.l1, self.l2, l3=1)
 		lossIndex+=1
 		lossSum+=lossAvg1
 
@@ -127,7 +124,7 @@ def BottleneckForwardVicregLocal(self, x, lossSum, lossIndex, trainOrTest, optim
 
 	if(trainOrTest):
 		if(applyIndependentLearningForDownsample):
-			out, lossAvg2 = trainLayerLocal(self, out, trainOrTest, optim, self.l1, self.l2, l3=2)
+			out, lossAvg2 = trainLayerLocal(out, trainOrTest, optim, self.l1, self.l2, l3=2)
 			lossIndex+=1
 			lossSum+=lossAvg2
 
@@ -139,7 +136,7 @@ def BottleneckForwardVicregLocal(self, x, lossSum, lossIndex, trainOrTest, optim
 	out = self.last_activation(out)
 
 	if(trainOrTest):
-		out, lossAvg3 = trainLayerLocal(self, out, trainOrTest, optim, self.l1, self.l2, l3=2+int(applyIndependentLearningForDownsample))
+		out, lossAvg3 = trainLayerLocal(out, trainOrTest, optim, self.l1, self.l2, l3=2+int(applyIndependentLearningForDownsample))
 		lossIndex+=1
 		lossSum+=lossAvg3		
 
@@ -150,12 +147,13 @@ def ResNetForwardVicregLocal(self, x, trainOrTest, optim):
 
 	lossSum = 0.0
 	lossIndex = 0
-	x, lossSum, lossIndex, trainOrTest, optim = self.layer0(x, lossSum, lossIndex, trainOrTest, optim)
-	x, lossSum, lossIndex, trainOrTest, optim = self.layer1(x, lossSum, lossIndex, trainOrTest, optim)
-	x, lossSum, lossIndex, trainOrTest, optim = self.layer2(x, lossSum, lossIndex, trainOrTest, optim)
-	x, lossSum, lossIndex, trainOrTest, optim = self.layer3(x, lossSum, lossIndex, trainOrTest, optim)
-	if(not smallInputImageSize):
-		x, lossSum, lossIndex, trainOrTest, optim = self.layer4(x, lossSum, lossIndex, trainOrTest, optim)
+	
+	if(smallInputImageSize):
+		layersList = [self.layer0, self.layer1, self.layer2, self.layer3]
+	else:
+		layersList = [self.layer0, self.layer1, self.layer2, self.layer3, self.layer4]
+	for l in range(len(layersList)):
+		x, lossSum, lossIndex, trainOrTest, optim = layersList[l](x, lossSum, lossIndex, trainOrTest, optim)
 
 	x = self.avgpool(x)
 	x = torch.flatten(x, 1)
@@ -167,12 +165,15 @@ def ResNetForwardVicregLocal(self, x, trainOrTest, optim):
 		
 	return x, lossAvg
 
-def trainLayerLocal(self, x, trainOrTest, optim, l1, l2, l3):
+def trainLayerLocal(x, trainOrTest, optim, l1, l2, l3):
 	
 	if(trainOrTest):
-		batchSize = x.shape[0]
-		x1, x2 = torch.split(x, batchSize//2, dim=0)
-		
+		if(networkHemispherical):
+			(x1, x2) = (x[0], x[1])
+		else:
+			batchSize = x.shape[0]
+			x1, x2 = torch.split(x, batchSize//2, dim=0)
+
 		if(debugTrainLocal):
 			print("trainLayerLocal: l1 = ", l1, ", l2 = ", l2, ", l3 = ", l3)
 			
@@ -182,19 +183,24 @@ def trainLayerLocal(self, x, trainOrTest, optim, l1, l2, l3):
 		opt = optim[l1][l2][l3]
 		opt.zero_grad()
 
-		loss = calculateLossVICregLocal(self, x1, x2)
+		loss = calculateLossVICregLocal(x1, x2)
 
 		loss.backward()
 		opt.step()
 
-		x = x.detach()
+		if(networkHemispherical):
+			x1 = x1.detach()
+			x2 = x2.detach()
+			x = [x1, x2]
+		else:
+			x = x.detach()
 	else:
 		printe("trainLayerLocal error: currently requires trainOrTest=True")
 
 	return x, loss
 
 #distributedExecution not currently supported
-def calculateLossVICregLocal(self, x1, x2):
+def calculateLossVICregLocal(x1, x2):
 
 	#convert to linear for VICreg
 	imageSize = x1.shape[2]*x1.shape[3]
@@ -302,46 +308,3 @@ def off_diagonal(x):
 		off = x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
 	return off
 
-
-def createLocalOptimisers(model):
-	l1Len = len(model.backbone.layers)
-	l1optim = []
-	for l1 in range(l1Len):
-		l2optim = []
-		l2Len = model.backbone.layers[l1]
-		for l2 in range(l2Len):
-			l3optim = []
-			if(l1 == 0):
-				l3Len = 1
-			else:
-				if(model.backbone.block.name == "Bottleneck"):
-					l3Len = 3
-				elif(model.backbone.block.name == "BasicBlock"):
-					l3Len = 2
-				else:
-					printe("error: model.backbone.block.name not found")
-				if(applyIndependentLearningForDownsample):
-					l3Len += 1
-			for l3 in range(l1Len):
-				opt = torch.optim.Adam(model.backbone.parameters(), lr=learningRateLocal)	#LARS
-				l3optim.append(opt)
-			l2optim.append(l3optim)
-		l1optim.append(l2optim)
-	optim = l1optim
-	return optim
-
-class ArbitraryLayerVICregLocal(nn.Module):
-	def __init__(self, layerFunction):
-		super(ArbitraryLayerVICregLocal, self).__init__()
-		self.layerFunction = layerFunction	
-
-	def forward(self, x):
-		if(trainOrTest):
-			batchSize = x.shape[0]
-			x1, x2 = torch.split(x, batchSize//2, dim=0)
-			x1 = self.layerFunction(x1)
-			x2 = self.layerFunction(x2)
-			x = torch.cat((x1, x2), dim=0)
-		else:
-			x = self.layerFunction(x)
-		return x

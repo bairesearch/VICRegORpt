@@ -16,7 +16,10 @@ import time
 from VICRegORpt_globalDefs import *
 if(vicregBiologicalMods):
 	import VICRegORpt_operations
-	import VICRegORpt_resnet_vicregLocal
+	if(networkHemispherical):
+		import VICRegORpt_resnet_vicregHemispherical
+	else:
+		import VICRegORpt_resnet_vicregLocal	
 distributedExecution = False
 learningRateWarmup = True
 saveModelEveryEpoch = True
@@ -154,12 +157,16 @@ def main(args):
 	)
 	
 	if(vicregBiologicalMods):
-		VICRegORpt_operations.weightsSetPositiveModel(model.backbone)
+		if(networkHemispherical):
+			VICRegORpt_operations.weightsSetPositiveModel(model.backbone1)
+			VICRegORpt_operations.weightsSetPositiveModel(model.backbone2)
+		else:
+			VICRegORpt_operations.weightsSetPositiveModel(model.backbone)
 		if(trainLocal):
 			if(trainLocal):
 				args.trainOrTest = True
 			VICRegORpt_resnet.setArgs(args)	#required for local loss function
-			optim = VICRegORpt_resnet_vicregLocal.createLocalOptimisers(model)
+			optim = VICRegORpt_operations.createLocalOptimisers(model)
 			
 	if (args.exp_dir / "model.pth").is_file():
 		if args.rank == 0:
@@ -172,11 +179,7 @@ def main(args):
 		start_epoch = 0
 
 	if(saveModelEveryEpoch):
-		if(distributedExecution):
-			if args.rank == 0:
-				torch.save(model.module.backbone.state_dict(), args.exp_dir / "resnet50.pth")
-		else:
-			torch.save(model.backbone.state_dict(), args.exp_dir / "resnet50.pth")
+		saveModel(model)
 
 	start_time = last_logging = time.time()
 	scaler = torch.cuda.amp.GradScaler()
@@ -188,7 +191,10 @@ def main(args):
 			y = y.cuda(gpu, non_blocking=True)
 	
 			if(trainLocal):
-				xAll = torch.cat((x, y), dim=0)
+				if(networkHemispherical):
+					xAll = [x, y]
+				else:
+					xAll = torch.cat((x, y), dim=0)
 				loss = model.forward(xAll, True, optim)
 				lr = learningRateLocal
 			else:
@@ -225,20 +231,21 @@ def main(args):
 			)
 			torch.save(state, args.exp_dir / "model.pth")
 		if(saveModelEveryEpoch):
-			if(distributedExecution):
-				if args.rank == 0:
-					torch.save(model.module.backbone.state_dict(), args.exp_dir / "resnet50.pth")
-			else:
-				torch.save(model.backbone.state_dict(), args.exp_dir / "resnet50.pth")
+			saveModel(model)
 
 	if(not saveModelEveryEpoch):
-		if(distributedExecution):
-			if args.rank == 0:
-				torch.save(model.module.backbone.state_dict(), args.exp_dir / "resnet50.pth")
+		saveModel(model)
+
+def saveModel(model):
+	if(distributedExecution):
+		if args.rank == 0:
+			torch.save(model.module.backbone.state_dict(), args.exp_dir / "resnet50.pth")
+	else:
+		if(trainLocal):
+			torch.save(model.state_dict(), args.exp_dir / "resnet50.pth")
 		else:
 			torch.save(model.backbone.state_dict(), args.exp_dir / "resnet50.pth")
-
-
+			
 def adjust_learning_rate(args, optimizer, loader, step):
 	max_steps = args.epochs * len(loader)
 	warmup_steps = 10 * len(loader)
@@ -261,19 +268,29 @@ class VICReg(nn.Module):
 		super().__init__()
 		self.args = args
 		self.num_features = int(args.mlp.split("-")[-1])
-		self.backbone, self.embedding = VICRegORpt_resnet.__dict__[args.arch](
-			zero_init_residual=True
-		)
-		self.projector = Projector(args, self.embedding)
+		if(networkHemispherical):
+			self.backbone1, self.embedding, self.blockType = VICRegORpt_resnet.__dict__[args.arch](zero_init_residual=True)
+			self.backbone2, self.embedding, self.blockType = VICRegORpt_resnet.__dict__[args.arch](zero_init_residual=True)
+		else:
+			self.backbone, self.embedding, self.blockType = VICRegORpt_resnet.__dict__[args.arch](zero_init_residual=True)
+			#self.backbone1 = self.backbone
+			#self.backbone2 = self.backbone
+		if(not trainLocal):
+			self.projector = Projector(args, self.embedding)
 			
 	if(trainLocal):
-		def forward(self, x, trainOrTest, optim):
-			x, lossAvg = self.backbone(x, trainOrTest, optim)
-			return lossAvg
+		if(networkHemispherical):
+			def forward(self, x, trainOrTest, optim):
+				x, lossAvg = VICRegORpt_resnet_vicregHemispherical.propagateNetwork(x, self.backbone1, self.backbone2, trainOrTest, optim, self.blockType)
+				return lossAvg
+		else:
+			def forward(self, x, trainOrTest, optim):
+				x, lossAvg = self.backbone(x, trainOrTest, optim)
+				return lossAvg
 	else:
 		def forward(self, x, y):
-			x = self.backbone(x)
-			y = self.backbone(y)
+			x = self.backbone(x)	#backbone1
+			y = self.backbone(y)	#backbone2
 			#print("x = ", x)
 			#print("y = ", y)
 			x = self.projector(x)

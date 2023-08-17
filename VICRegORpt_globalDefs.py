@@ -82,6 +82,10 @@ normaliseActivationSparsityLayerSkip = False
 normaliseActivationSparsityBatch = True
 activationFunctionType = "relu"
 
+blockTypeBasic = 1
+blockTypeBottleneck = 2
+blockTypeInput = 3
+			
 if(vicregBiologicalMods):
 	usePositiveWeights = False
 	if(usePositiveWeights):
@@ -99,6 +103,28 @@ if(vicregBiologicalMods):
 		normaliseActivationSparsityLayerSkip = False	#normalise activation across skip connections layer
 	trainLocal = True
 	if(trainLocal):
+		networkHemispherical = True	#optional	#propagate through two paired networks
+		if(networkHemispherical):
+			numberOfHemispheres = 2
+			#networkHemisphericalStereoInput = True	#TODO	#use stereo input (vision) - do not select matched/ablated input between network pairs
+			'''
+			#FUTURE implementation options from VICRegANNpt_globalDefs.py;
+			partiallyAlignLayer = True	#experimental; align a fraction of layer neurons
+			vicregSimilarityLossOnly = False	#experimental; minor connectivity differences between paired network architectures might add regularisation
+			trainMostAlignedNeurons = False	#experimental; only train already partially aligned neurons
+			if(partiallyAlignLayer):
+				partiallyAlignLayerFraction = 0.5	#default:0.5	#fraction of layer neurons to align
+				partiallyAlignLayerIgnoreValue = 1.0	#set arbitrary activation value during training to ignore alignment
+			if(trainMostAlignedNeurons):
+				#trainMostAlignedNeuronsMethod = "softmax"
+				#trainMostAlignedNeuronsMethod = "thresholded"
+				#trainMostAlignedNeuronsThresholdMin = 1.5
+				trainMostAlignedNeuronsMethod = "topk"	#incomplete
+				trainMostAlignedNeuronsTopK = 5	#number of neurons per layer to train (topk)
+			sparseLinearLayers = True	#add minor connectivity differences between paired network architectures
+			if(sparseLinearLayers):
+				sparseLinearLayersLevel = 0.8	#0.5	#fraction of non-zeroed connections
+			'''
 		applyIndependentLearningForDownsample = False	#optional	#apply independent learning for downsample (conv1x1)	#not downsample is only used for first block in l1
 		learningRateLocal = 0.005
 		debugTrainLocal = False

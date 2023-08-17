@@ -153,15 +153,23 @@ def main_worker(gpu, args):
 	torch.cuda.set_device(gpu)
 	torch.backends.cudnn.benchmark = True
 
-	backbone, embedding = VICRegORpt_resnet.__dict__[args.arch](zero_init_residual=True)
-	state_dict = torch.load(args.pretrained, map_location="cpu")
-	if "model" in state_dict:
-		state_dict = state_dict["model"]
-		state_dict = {
-			key.replace("module.backbone.", ""): value
-			for (key, value) in state_dict.items()
-		}
-	backbone.load_state_dict(state_dict, strict=False)
+	if(trainLocal):
+		if(networkHemispherical):
+			backbone = model.backbone1	#only propagate backbone1
+		else:
+			backbone = model.backbone
+		embedding = model.embedding
+	else:
+		backbone, embedding = VICRegORpt_resnet.__dict__[args.arch](zero_init_residual=True)
+		state_dict = torch.load(args.pretrained, map_location="cpu")
+		#only model.backbone was saved/loaded
+		if "model" in state_dict:
+			state_dict = state_dict["model"]
+			state_dict = {
+				key.replace("module.backbone.", ""): value
+				for (key, value) in state_dict.items()
+			}
+		backbone.load_state_dict(state_dict, strict=False)
 	
 	if(trainLocal):
 		if(trainLocal):

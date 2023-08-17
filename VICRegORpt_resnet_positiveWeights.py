@@ -21,7 +21,13 @@ from VICRegORpt_globalDefs import *
 import torch
 import torch.nn as nn
 import VICRegORpt_resnet_vicregLocal
-			
+import VICRegORpt_operations
+
+def setArgs(argsNew):
+	global trainOrTest
+	if(trainLocal):
+		trainOrTest = argsNew.trainOrTest
+		
 class BatchNormLayer(nn.Module):
 	def __init__(self, num_out_filters):
 		super(BatchNormLayer, self).__init__()
@@ -36,9 +42,9 @@ class BatchNormLayer(nn.Module):
 				layerNormFunction = nn.GroupNorm(1, num_out_filters)
 		if(trainLocal):
 			if(normaliseActivationSparsityBatch):
-				self.batchNormFunction = VICRegORpt_resnet_vicregLocal.ArbitraryLayerVICregLocal(batchNormFunction)
+				self.batchNormFunction = ArbitraryLayerVICregLocal(batchNormFunction)
 			if(normaliseActivationSparsityLayer):
-				self.layerNormFunction = VICRegORpt_resnet_vicregLocal.ArbitraryLayerVICregLocal(layerNormFunction)
+				self.layerNormFunction = ArbitraryLayerVICregLocal(layerNormFunction)
 		else:
 			if(normaliseActivationSparsityBatch):
 				self.batchNormFunction = batchNormFunction
@@ -58,7 +64,7 @@ class LayerNormLayer(nn.Module):
 		super(LayerNormLayer, self).__init__()
 		layerNormFunction = nn.InstanceNorm2d(num_out_filters)	#nn.GroupNorm(1, num_out_filters)
 		if(trainLocal):
-			self.layerNormFunction = VICRegORpt_resnet_vicregLocal.ArbitraryLayerVICregLocal(layerNormFunction)
+			self.layerNormFunction = ArbitraryLayerVICregLocal(layerNormFunction)
 		else:
 			self.layerNormFunction = layerNormFunction
 
@@ -99,7 +105,7 @@ class SoftmaxLayer(nn.Module):
 		super(SoftmaxLayer, self).__init__()
 		softmaxFunction = SoftmaxConv2d()
 		if(trainLocal):
-			self.softmaxFunction = VICRegORpt_resnet_vicregLocal.ArbitraryLayerVICregLocal(softmaxFunction)
+			self.softmaxFunction = ArbitraryLayerVICregLocal(softmaxFunction)
 		else:
 			self.softmaxFunction = softmaxFunction
 
@@ -133,3 +139,19 @@ def generateActivationFunction():
 	elif(activationFunctionType=="softmax"):
 		activation = SoftmaxLayer()
 	return activation
+
+class ArbitraryLayerVICregLocal(nn.Module):
+	def __init__(self, layerFunction):
+		super(ArbitraryLayerVICregLocal, self).__init__()
+		self.layerFunction = layerFunction
+
+	def forward(self, x):
+		if(trainOrTest and not networkHemispherical):
+			batchSize = x.shape[0]
+			x1, x2 = torch.split(x, batchSize//2, dim=0)
+			x1 = self.layerFunction(x1)
+			x2 = self.layerFunction(x2)
+			x = torch.cat((x1, x2), dim=0)
+		else:
+			x = self.layerFunction(x)
+		return x
