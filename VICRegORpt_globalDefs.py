@@ -106,7 +106,7 @@ if(vicregBiologicalMods):
 		networkHemispherical = True	#optional	#propagate through two paired networks
 		if(networkHemispherical):
 			numberOfHemispheres = 2
-			#networkHemisphericalStereoInput = True	#TODO	#use stereo input (vision) - do not select matched/ablated input between network pairs
+			networkHemisphericalStereoInput = True	#use stereo input (vision) - do not select matched/ablated input between network pairs	#for humans take left/right side of eye (not left/right eye)
 			'''
 			#FUTURE implementation options from VICRegANNpt_globalDefs.py;
 			partiallyAlignLayer = True	#experimental; align a fraction of layer neurons

@@ -46,8 +46,7 @@ class Normalize(object):
 			return img
 		else:
 			return self.normalize(img)
-
-
+		
 class TrainTransform(object):
 	def __init__(self, imageWidth):
 		self.transform = transforms.Compose(
@@ -94,6 +93,11 @@ class TrainTransform(object):
 		)
 
 	def __call__(self, sample):
-		x1 = self.transform(sample)
-		x2 = self.transform_prime(sample)
+		if(networkHemisphericalStereoInput):
+			x = self.transform(sample)
+			x1 = transforms.functional.crop(x,0,0,imageWidth,imageWidth//2)
+			x2 = transforms.functional.crop(x,0,imageWidth//2,imageWidth,imageWidth//2)
+		else:
+			x1 = self.transform(sample)
+			x2 = self.transform_prime(sample)
 		return x1, x2
