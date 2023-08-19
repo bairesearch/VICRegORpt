@@ -10,20 +10,19 @@ import torch.nn as nn
 
 from VICRegORpt_globalDefs import *
 if(trainLocal):
+	import VICRegORpt_resnet_vicregLocal
 	if(networkHemispherical):
 		import VICRegORpt_resnet_vicregHemispherical
-	else:
-		import VICRegORpt_resnet_vicregLocal
 	from VICRegORpt_resnet_vicregLocal import sequentialMultiInput
-if(vicregBiologicalMods):
-	import VICRegORpt_resnet_positiveWeights
+#if(vicregBiologicalMods):
+import VICRegORpt_resnet_positiveWeights
 
 
 def setArgs(argsNew):
+	if(trainLocal):
+		VICRegORpt_resnet_vicregLocal.setArgs(argsNew)
 	if(networkHemispherical):
 		VICRegORpt_resnet_vicregHemispherical.setArgs(argsNew)
-	elif(trainLocal):
-		VICRegORpt_resnet_vicregLocal.setArgs(argsNew)
 	VICRegORpt_resnet_positiveWeights.setArgs(argsNew)
 	
 def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1):
@@ -72,20 +71,16 @@ class Input(nn.Module):
 		self.l1 = l1
 		self.l2 = l2
 
-	if(networkHemispherical):
-		def forward(self):
-			return False
+	if(trainLocal):
+		def forward(self, x, lossSum, lossIndex, trainOrTest, optim):
+			return VICRegORpt_resnet_vicregLocal.InputForwardVicregLocal(self, x, lossSum, lossIndex, trainOrTest, optim)
 	else:
-		if(trainLocal):
-			def forward(self, x, lossSum, lossIndex, trainOrTest, optim):
-				return VICRegORpt_resnet_vicregLocal.InputForwardVicregLocal(self, x, lossSum, lossIndex, trainOrTest, optim)
-		else:
-			def forward(self, x):
-				x = self.conv1(x)
-				x = self.bn1(x)
-				x = self.relu(x)
-				x = self.maxpool(x)
-				return x
+		def forward(self, x):
+			x = self.conv1(x)
+			x = self.bn1(x)
+			x = self.relu(x)
+			x = self.maxpool(x)
+			return x
 			
 class BasicBlock(nn.Module):
 	expansion = 1
@@ -127,33 +122,29 @@ class BasicBlock(nn.Module):
 			lnorm_layer = VICRegORpt_resnet_positiveWeights.createLayerNormLayer()
 			self.lnSkip = lnorm_layer(planes*expansion)
 
-	if(networkHemispherical):
-		def forward(self):
-			return False
+	if(trainLocal):
+		def forward(self, x, lossSum, lossIndex, trainOrTest, optim):
+			return VICRegORpt_resnet_vicregLocal.BasicBlockForwardVicregLocal(self, x, lossSum, lossIndex, trainOrTest, optim)
 	else:
-		if(trainLocal):
-			def forward(self, x, lossSum, lossIndex, trainOrTest, optim):
-				return VICRegORpt_resnet_vicregLocal.BasicBlockForwardVicregLocal(self, x, lossSum, lossIndex, trainOrTest, optim)
-		else:
-			def forward(self, x):
-				identity = x
+		def forward(self, x):
+			identity = x
 
-				out = self.conv1(x)
-				out = self.bn1(out)
-				out = self.relu(out)
+			out = self.conv1(x)
+			out = self.bn1(out)
+			out = self.relu(out)
 
-				out = self.conv2(out)
-				out = self.bn2(out)
+			out = self.conv2(out)
+			out = self.bn2(out)
 
-				if self.downsample is not None:
-					identity = self.downsample(x)
+			if self.downsample is not None:
+				identity = self.downsample(x)
 
-				out += identity
-				if(normaliseActivationSparsityLayerSkip):
-					out = self.lnSkip(out)
-				out = self.relu(out)
+			out += identity
+			if(normaliseActivationSparsityLayerSkip):
+				out = self.lnSkip(out)
+			out = self.relu(out)
 
-				return out
+			return out
 
 
 class Bottleneck(nn.Module):
@@ -202,37 +193,33 @@ class Bottleneck(nn.Module):
 		elif last_activation == "sigmoid":
 			self.last_activation = nn.Sigmoid()
 
-	if(networkHemispherical):
-		def forward(self):
-			return False
+	if(trainLocal):
+		def forward(self, x, lossSum, lossIndex, trainOrTest, optim):
+			return VICRegORpt_resnet_vicregLocal.BottleneckForwardVicregLocal(self, x, lossSum, lossIndex, trainOrTest, optim)
 	else:
-		if(trainLocal):
-			def forward(self, x, lossSum, lossIndex, trainOrTest, optim):
-				return VICRegORpt_resnet_vicregLocal.BottleneckForwardVicregLocal(self, x, lossSum, lossIndex, trainOrTest, optim)
-		else:
-			def forward(self, x):
-				identity = x
+		def forward(self, x):
+			identity = x
 
-				out = self.conv1(x)
-				out = self.bn1(out)
-				out = self.relu(out)
+			out = self.conv1(x)
+			out = self.bn1(out)
+			out = self.relu(out)
 
-				out = self.conv2(out)
-				out = self.bn2(out)
-				out = self.relu(out)
+			out = self.conv2(out)
+			out = self.bn2(out)
+			out = self.relu(out)
 
-				out = self.conv3(out)
-				out = self.bn3(out)
+			out = self.conv3(out)
+			out = self.bn3(out)
 
-				if self.downsample is not None:
-					identity = self.downsample(x)
+			if self.downsample is not None:
+				identity = self.downsample(x)
 
-				out += identity
-				if(normaliseActivationSparsityLayerSkip):
-					out = self.lnSkip(out)
-				out = self.last_activation(out)
+			out += identity
+			if(normaliseActivationSparsityLayerSkip):
+				out = self.lnSkip(out)
+			out = self.last_activation(out)
 
-				return out
+			return out
 
 
 class ResNet(nn.Module):
@@ -397,7 +384,7 @@ class ResNet(nn.Module):
 				layersList = [self.layer0, self.layer1, self.layer2, self.layer3]
 			else:
 				layersList = [self.layer0, self.layer1, self.layer2, self.layer3, self.layer4]
-			for l in len(layersList):
+			for l in range(len(layersList)):
 				x = layersList[l](x)
 		
 			x = self.avgpool(x)

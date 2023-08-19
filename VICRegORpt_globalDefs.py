@@ -81,6 +81,8 @@ trainLocalConvLocationIndependenceAllPixelsSequential = False
 normaliseActivationSparsityLayerSkip = False
 normaliseActivationSparsityBatch = True
 activationFunctionType = "relu"
+networkHemispherical = False
+networkHemisphericalStereoInput = False
 
 blockTypeBasic = 1
 blockTypeBottleneck = 2

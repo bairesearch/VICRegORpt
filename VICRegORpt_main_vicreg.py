@@ -232,7 +232,6 @@ def main(args):
 			torch.save(state, args.exp_dir / "model.pth")
 		if(saveModelEveryEpoch):
 			saveModel(model)
-
 	if(not saveModelEveryEpoch):
 		saveModel(model)
 
@@ -241,8 +240,8 @@ def saveModel(model):
 		if args.rank == 0:
 			torch.save(model.module.backbone.state_dict(), args.exp_dir / "resnet50.pth")
 	else:
-		if(trainLocal):
-			torch.save(model.state_dict(), args.exp_dir / "resnet50.pth")
+		if(networkHemispherical):
+			torch.save(model.backbone1.state_dict(), args.exp_dir / "resnet50.pth")
 		else:
 			torch.save(model.backbone.state_dict(), args.exp_dir / "resnet50.pth")
 			
