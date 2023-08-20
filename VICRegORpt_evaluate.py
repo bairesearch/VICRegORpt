@@ -21,6 +21,7 @@ from torchvision import datasets, transforms
 import torch
 
 import VICRegORpt_resnet
+import VICRegORpt_augmentations as aug
 
 from VICRegORpt_globalDefs import *
 distributedExecution = False
@@ -207,32 +208,10 @@ def main_worker(gpu, args):
 	# Data loading code
 	traindir = args.data_dir / "train"
 	valdir = args.data_dir / "val"
-	normalize = transforms.Normalize(
-		mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-	)
-
-	train_dataset = datasets.ImageFolder(
-		traindir,
-		transforms.Compose(
-			[
-				transforms.RandomResizedCrop(224),
-				transforms.RandomHorizontalFlip(),
-				transforms.ToTensor(),
-				normalize,
-			]
-		),
-	)
-	val_dataset = datasets.ImageFolder(
-		valdir,
-		transforms.Compose(
-			[
-				transforms.Resize(256),
-				transforms.CenterCrop(224),
-				transforms.ToTensor(),
-				normalize,
-			]
-		),
-	)
+	transformsTrain = aug.EvalTransformTrain(imageWidth)
+	transformsVal = aug.EvalTransformVal(imageWidth)
+	train_dataset = datasets.ImageFolder(traindir, transformsTrain)
+	val_dataset = datasets.ImageFolder(valdir, transformsVal)
 
 	if args.train_percent in {1, 10}:
 		train_dataset.samples = []

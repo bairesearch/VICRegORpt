@@ -91,7 +91,6 @@ class TrainTransform(object):
 				Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 			]
 		)
-
 	def __call__(self, sample):
 		if(networkHemisphericalStereoInput):
 			x = self.transform(sample)
@@ -101,3 +100,41 @@ class TrainTransform(object):
 			x1 = self.transform(sample)
 			x2 = self.transform_prime(sample)
 		return x1, x2
+
+class EvalTransformTrain(object):
+	def __init__(self, imageWidth):
+		self.transform = transforms.Compose(
+			[
+				transforms.RandomResizedCrop(224),
+				transforms.RandomHorizontalFlip(),
+				transforms.ToTensor(),
+				Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+			]
+		)
+	def __call__(self, sample):
+		if(networkHemisphericalStereoInput):
+			x = self.transform(sample)
+			x = transforms.functional.crop(x,0,0,imageWidth,imageWidth//2)
+		else:
+			x = self.transform(sample)
+		return x
+
+class EvalTransformVal(object):
+	def __init__(self, imageWidth):
+		self.transform = transforms.Compose(
+			[
+				transforms.Resize(256),
+				transforms.CenterCrop(224),
+				transforms.ToTensor(),
+				Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+			]
+		)
+	def __call__(self, sample):
+		if(networkHemisphericalStereoInput):
+			x = self.transform(sample)
+			x = transforms.functional.crop(x,0,0,imageWidth,imageWidth//2)
+		else:
+			x = self.transform(sample)
+		return x
+
+
